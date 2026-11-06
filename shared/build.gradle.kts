@@ -13,19 +13,11 @@ plugins {
     alias(libs.plugins.aboutLibraries)
 }
 
+compose.resources {
+    packageOfResClass = "shiguangschedule.shared.generated.resources"
+}
+
 kotlin {
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "Shared"
-            isStatic = true
-        }
-    }
-
-    jvm()
-
     android {
         namespace = "com.xingheyuzhuan.shiguangschedule.shared"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -111,16 +103,6 @@ kotlin {
             implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
         }
 
-        jvmMain.dependencies {
-            implementation(libs.androidx.sqlite.bundled)
-            implementation(libs.ktor.client.okhttp)
-        }
-
-        iosMain.dependencies {
-            implementation(libs.androidx.sqlite.framework)
-            implementation(libs.ktor.client.darwin)
-        }
-
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
@@ -131,9 +113,6 @@ kotlin {
 dependencies {
     androidRuntimeClasspath(libs.compose.ui.tooling)
     add("kspAndroid", libs.androidx.room3.compiler)
-    add("kspJvm", libs.androidx.room3.compiler)
-    add("kspIosArm64", libs.androidx.room3.compiler)
-    add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
 }
 
 // 导出第三方依赖许可信息

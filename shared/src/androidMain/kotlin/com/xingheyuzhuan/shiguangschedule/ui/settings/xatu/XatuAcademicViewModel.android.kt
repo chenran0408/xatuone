@@ -53,9 +53,14 @@ class XatuAcademicViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _uiState.update { it.copy(status = error.message ?: "读取教务数据失败，已保留本地缓存") }
+                _uiState.update { it.copy(status = "读取失败：${error.message ?: "已保留本地缓存"}") }
             }
         }
+    }
+
+    fun cancel() {
+        request?.cancel()
+        request = null
     }
 
     fun selectSemester(id: String) {
@@ -68,7 +73,7 @@ class XatuAcademicViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _uiState.update { it.copy(status = error.message ?: "读取失败，已保留本地缓存") }
+                _uiState.update { it.copy(status = "读取失败：${error.message ?: "已保留本地缓存"}") }
             }
         }
     }

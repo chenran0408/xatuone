@@ -54,12 +54,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * 各平台是否启用裁剪预览窗口开关
- */
-expect val isCropWindowEnabled: Boolean
-
-/**
- * 跨平台通用图片裁剪组件
+ * Android 图片裁剪组件
  */
 @Composable
 fun ImageCropper(
@@ -71,23 +66,6 @@ fun ImageCropper(
     if (imageBitmap == null) return
 
     val coroutineScope = rememberCoroutineScope()
-
-    // 若当前平台关闭了预览窗口（如 Desktop），后台异步静默转为 ByteArray 并直接回调
-    LaunchedEffect(imageBitmap) {
-        if (!isCropWindowEnabled) {
-            val bytes = cropImageBitmapNative(
-                source = imageBitmap,
-                srcLeft = 0,
-                srcTop = 0,
-                cropWidth = imageBitmap.width,
-                cropHeight = imageBitmap.height
-            )
-            onCropConfirmed(bytes)
-            return@LaunchedEffect
-        }
-    }
-
-    if (!isCropWindowEnabled) return
 
     var containerSize by remember { mutableStateOf(Size.Zero) }
     val density = LocalDensity.current

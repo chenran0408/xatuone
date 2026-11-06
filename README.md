@@ -4,10 +4,12 @@
 
 ## 工程结构
 
-- `shared`：课程表通用能力、数据层、导航和 Compose UI。
+- `shared`：Android 应用内部复用的课程表能力、数据层、导航和 Compose UI。
 - `shared/src/androidMain/.../xatu`：XATU 学术和校园服务模块。
 - `androidApp`：Android 入口、WebView 会话、通知和桌面小组件。
 - `docs`：架构约定和工程审计记录。
+
+项目只面向 Android 手机；不包含 iOS、macOS、Windows 或 Linux 应用。
 
 XATU 页面复用 Android WebView 的持久化会话。Cookie 在用户退出登录或切换学号时清理，普通页面切换会保留会话。
 

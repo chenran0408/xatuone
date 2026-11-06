@@ -75,14 +75,10 @@ jobs:
             // 发布产物白名单,名称须与 ci-build.yml 中 upload-artifact 的 name 一致。
             // 不在此列表中的 artifact(如 shared-assets 资源包)不会被下载或发布。
             const expectedArtifacts = [
-              'app-release-apk',
-              'desktop-linux',
-              'desktop-windows',
-              'desktop-macos',
+              'app-release-apk'
             ];
 
-            // true  = 任一平台缺失即失败(全平台一致发布)
-            // false = 缺失的平台跳过,存在的照发
+            // Android APK is the only release artifact.
             const REQUIRE_ALL = true;
 
             core.info(`执行预检：验证 Run ID ${build_run_id} 是否成功且包含发布类 Artifacts`);
@@ -234,16 +230,8 @@ jobs:
           echo "===== 解压后目录结构 ====="
           find artifacts -type f | sort
 
-          # 按扩展名收集各平台安装包
-          FILE_LIST=$(find artifacts -type f \( \
-              -name "*.apk" -o \
-              -name "*.deb" -o \
-              -name "*.rpm" -o \
-              -name "*.exe" -o \
-              -name "*.msi" -o \
-              -name "*.dmg" -o \
-              -name "*.pkg" \
-            \) | sort)
+          # Android phone packages only
+          FILE_LIST=$(find artifacts -type f -name "*.apk" | sort)
 
           if [ -z "$FILE_LIST" ]; then
             echo "错误：未找到任何可发布的安装包文件！"

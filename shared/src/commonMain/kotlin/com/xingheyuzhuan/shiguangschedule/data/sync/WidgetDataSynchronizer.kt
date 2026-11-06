@@ -60,7 +60,7 @@ class WidgetDataSynchronizer(
     // 内部通道：用于向各平台分发“数据同步完成”的通知信号
     private val _syncCompletedChannel = Channel<Unit>(Channel.CONFLATED)
 
-    /** 暴露给各平台（Android / iOS）监听的同步完成事件流 */
+    /** 暴露给 Android 小组件监听的同步完成事件流 */
     val syncCompletedFlow: Flow<Unit> = _syncCompletedChannel.receiveAsFlow()
 
     /**

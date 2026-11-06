@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -171,7 +172,7 @@ fun AdaptiveNavigationScaffold(
                                         icon = {
                                             Icon(
                                                 imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                                                contentDescription = item.label,
+                                                contentDescription = null,
                                                 modifier = Modifier.size(24.dp)
                                             )
                                         },
@@ -363,7 +364,10 @@ private fun AnimatedTabItem(
                 indication = null,
                 role = Role.Tab
             ) { if (!isSelected) onSelect() }
-            .semantics { selected = isSelected },
+            .semantics {
+                contentDescription = item.label
+                selected = isSelected
+            },
         contentAlignment = Alignment.CenterStart
     ) {
         TabContent(
@@ -398,7 +402,7 @@ private fun TabContent(
     ) {
         Icon(
             imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-            contentDescription = item.label,
+            contentDescription = null,
             tint = Color.Unspecified,
             modifier = Modifier
                 .size(24.dp)

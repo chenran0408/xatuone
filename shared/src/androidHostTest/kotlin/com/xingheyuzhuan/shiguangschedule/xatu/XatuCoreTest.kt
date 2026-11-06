@@ -5,7 +5,13 @@ import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCoordinate
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuLocation
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuAcademicCacheFile
+import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuSemester
+import com.xingheyuzhuan.shiguangschedule.xatu.academic.decodeAcademicCache
 
 class XatuCoreTest {
     @Test
@@ -113,5 +119,38 @@ class XatuCoreTest {
         assertEquals("必修", course.nature)
         assertEquals("3", course.credits)
         assertEquals("48", course.hours)
+    }
+
+    @Test
+    fun academicCacheReadsLegacyPlaintext() {
+        val cache = XatuAcademicCacheFile(semesters = listOf(XatuSemester("12", "2026-2027秋季学期")))
+        val raw = Json.encodeToString(cache)
+
+        val decoded = decodeAcademicCache(raw) { _, _ -> error("legacy cache must not be decrypted") }
+
+        assertEquals(cache, decoded)
+    }
+
+    @Test
+    fun academicCacheReadsEncryptedFormat() {
+        val cache = XatuAcademicCacheFile(semesters = listOf(XatuSemester("12", "2026-2027秋季学期")))
+        val raw = """{"encryptedData":"ciphertext","iv":"nonce"}"""
+
+        val decoded = decodeAcademicCache(raw) { encryptedData, iv ->
+            assertEquals("ciphertext", encryptedData)
+            assertEquals("nonce", iv)
+            Json.encodeToString(cache)
+        }
+
+        assertEquals(cache, decoded)
+    }
+
+    @Test
+    fun academicCacheDoesNotTreatUndecryptableCiphertextAsLegacyData() {
+        val raw = """{"encryptedData":"ciphertext","iv":"nonce"}"""
+
+        assertFailsWith<IllegalStateException> {
+            decodeAcademicCache(raw) { _, _ -> null }
+        }
     }
 }

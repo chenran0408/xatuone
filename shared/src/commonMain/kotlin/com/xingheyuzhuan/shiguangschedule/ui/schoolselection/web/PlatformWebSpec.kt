@@ -4,12 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
- * 是否为桌面平台（Desktop/JVM），用于控制模式切换菜单的显隐
- */
-expect val isDesktopPlatform: Boolean
-
-/**
- * 跨平台系统返回键响应 (Android 端绑定 BackHandler，iOS/Desktop 端为空实现)
+ * Android 系统返回键处理
  */
 @Composable
 expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)

@@ -1,6 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule.xatu.academic
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.jsoup.Jsoup
 
 @Serializable
@@ -89,10 +91,24 @@ data class XatuAcademicSnapshot(
 )
 
 @Serializable
-internal data class XatuAcademicCacheFile(
+data class XatuAcademicCacheFile(
     val semesters: List<XatuSemester> = emptyList(),
     val snapshots: List<XatuAcademicSnapshot> = emptyList()
 )
+
+@Serializable
+internal data class EncryptedAcademicCache(val encryptedData: String, val iv: String)
+
+fun decodeAcademicCache(raw: String, decrypt: (String, String) -> String?): XatuAcademicCacheFile {
+    val json = Json { ignoreUnknownKeys = true }
+    val payload = json.parseToJsonElement(raw).jsonObject
+    if ("encryptedData" !in payload && "iv" !in payload) {
+        return json.decodeFromString(raw)
+    }
+    val encrypted = json.decodeFromString<EncryptedAcademicCache>(raw)
+    val plaintext = decrypt(encrypted.encryptedData, encrypted.iv) ?: error("学术缓存解密失败")
+    return json.decodeFromString(plaintext)
+}
 
 object XatuAcademicParser {
     fun semesters(html: String): List<XatuSemester> {

@@ -12,14 +12,7 @@ import shiguangschedule.shared.generated.resources.dialog_text_file_saved_share_
 import shiguangschedule.shared.generated.resources.dialog_title_file_saved
 
 /**
- * 平台开关：
- * - Android / iOS: true（启用分享管理器与相关提示）
- * - Desktop (JVM): false（直接拦截，不调用分享管理器）
- */
-expect val isShareDialogSupported: Boolean
-
-/**
- * 平台底层文件分享执行逻辑
+ * Android 底层文件分享执行逻辑
  */
 expect fun platformShareFile(filePath: String, mimeType: String)
 
@@ -32,8 +25,6 @@ fun ShareDialog(
     mimeType: String,
     onDismiss: () -> Unit
 ) {
-    if (!isShareDialogSupported) return
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.dialog_title_file_saved)) },

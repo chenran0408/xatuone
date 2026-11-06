@@ -80,14 +80,7 @@ class XatuAcademicRepository(
         withContext(Dispatchers.IO) {
             if (fileSystem.exists(cachePath)) {
                 val raw = fileSystem.source(cachePath).buffer().use { it.readUtf8() }
-                val value = runCatching {
-                    val encrypted = json.decodeFromString<EncryptedAcademicCache>(raw)
-                    val decrypted = crypto.decrypt(encrypted.encryptedData, encrypted.iv)
-                        ?: error("学术缓存解密失败")
-                    json.decodeFromString<XatuAcademicCacheFile>(decrypted)
-                }.getOrElse {
-                    json.decodeFromString<XatuAcademicCacheFile>(raw)
-                }
+                val value = decodeAcademicCache(raw, crypto::decrypt)
                 semesters = value.semesters
                 snapshots.clear()
                 value.snapshots.forEach { snapshots["${it.account}|${it.semesterId}"] = it }
@@ -105,6 +98,3 @@ class XatuAcademicRepository(
         }
     }
 }
-
-@kotlinx.serialization.Serializable
-private data class EncryptedAcademicCache(val encryptedData: String, val iv: String)

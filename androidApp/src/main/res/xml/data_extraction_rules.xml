@@ -5,15 +5,13 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="datastore/xatu_account.preferences_pb" />
+        <exclude domain="file" path="datastore/xatu_campus.preferences_pb" />
+        <exclude domain="file" path="xatu/academic_cache.json" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="datastore/xatu_account.preferences_pb" />
+        <exclude domain="file" path="datastore/xatu_campus.preferences_pb" />
+        <exclude domain="file" path="xatu/academic_cache.json" />
     </device-transfer>
-    -->
 </data-extraction-rules>

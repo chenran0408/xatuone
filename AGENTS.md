@@ -2,10 +2,10 @@
 
 ## 目录边界
 
-- `shared/src/commonMain`：课程表、通用导航、跨平台数据和 UI。
+- `shared/src/commonMain`：课程表、通用导航、共享数据和 UI。
 - `shared/src/androidMain`：Android 专属的 XATU 服务、WebView、定位和 OCR。
 - `androidApp`：Android 应用壳、权限、通知、小组件和发布构建。
-- `desktopApp`、`iosApp`：其他平台入口，Android 功能不得直接写入这些模块。
+- 本项目只构建和发布 Android 手机应用。
 
 新增校园服务时，将网络解析放在 `shared/src/androidMain/.../xatu/<domain>`，持久化放在 repository，页面只负责状态展示和事件分发。
 

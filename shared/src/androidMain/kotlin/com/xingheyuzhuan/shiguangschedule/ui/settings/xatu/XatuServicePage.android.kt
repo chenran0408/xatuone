@@ -23,9 +23,11 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,6 +62,7 @@ import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusOption
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusService
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuDorm
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -81,6 +84,10 @@ actual fun XatuServicePage(
     var calendarRefreshing by remember(page) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    DisposableEffect(page, academicViewModel) {
+        onDispose { academicViewModel.cancel() }
+    }
+
     LaunchedEffect(page, account.studentNumber, account.loggedIn) {
         if (page == "plan" || page == "grades" || page == "exams") academicViewModel.load(page)
     }
@@ -91,8 +98,10 @@ actual fun XatuServicePage(
                 try {
                     campus.saveCalendar(calendarService.latest())
                     status = "校历已更新"
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (error: Exception) {
-                    status = error.message ?: "校历读取失败"
+                    status = "校历读取失败：${error.message ?: "请重试"}"
                 }
             }
             page == "calendar" -> status = ""
@@ -131,8 +140,10 @@ actual fun XatuServicePage(
                             try {
                                 campus.saveCalendar(calendarService.latest())
                                 status = "校历已更新"
+                            } catch (error: CancellationException) {
+                                throw error
                             } catch (error: Exception) {
-                                status = error.message ?: "校历读取失败"
+                                status = "校历读取失败：${error.message ?: "请重试"}"
                             } finally {
                                 calendarRefreshing = false
                             }
@@ -201,6 +212,7 @@ private fun CheckinLocationContent(snapshot: XatuCampusSnapshot, campus: XatuCam
     var longitude by remember(saved) { mutableStateOf(if (saved.enabled) saved.longitude.toString() else "") }
     var enabled by remember(saved) { mutableStateOf(saved.enabled) }
     var status by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
     MiuixCard(Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SmallTitle("签到位置")
@@ -214,14 +226,46 @@ private fun CheckinLocationContent(snapshot: XatuCampusSnapshot, campus: XatuCam
                 if (lat == null || lng == null) {
                     status = "请输入有效的纬度和经度"
                 } else {
+                    saving = true
+                    status = "正在保存签到位置…"
                     scope.launch {
-                        campus.saveCheckinLocation(XatuCheckinLocation(enabled, lat, lng, "GCJ02"))
-                        status = "签到位置已保存"
+                        try {
+                            campus.saveCheckinLocation(XatuCheckinLocation(enabled, lat, lng, "GCJ02"))
+                            status = "签到位置已保存"
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            status = "签到位置保存失败：${error.message ?: "请重试"}"
+                        } finally {
+                            saving = false
+                        }
                     }
                 }
-            }, modifier = Modifier.fillMaxWidth()) { MiuixText("保存签到位置") }
-            MiuixButton(onClick = { enabled = !enabled; scope.launch { campus.saveCheckinLocation(saved.copy(enabled = enabled)) } }, modifier = Modifier.fillMaxWidth()) {
-                MiuixText(if (enabled) "已启用自定义位置" else "已停用自定义位置")
+            }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { MiuixText("保存签到位置") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MiuixText("签到网页使用自定义位置", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = enabled,
+                    enabled = !saving,
+                    onCheckedChange = { value ->
+                        enabled = value
+                        saving = true
+                        status = "正在保存自定义位置设置…"
+                        scope.launch {
+                            try {
+                                campus.saveCheckinLocation(saved.copy(enabled = value))
+                                status = if (value) "已启用自定义位置" else "已停用自定义位置"
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                enabled = saved.enabled
+                                status = "自定义位置设置失败：${error.message ?: "请重试"}"
+                            } finally {
+                                saving = false
+                            }
+                        }
+                    }
+                )
             }
             MiuixButton(onClick = { onOpen("https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/*default/index.do#/jrqd") }, modifier = Modifier.fillMaxWidth()) { MiuixText("打开签到网页") }
         }
@@ -281,8 +325,10 @@ private fun ElectricityContent(
             projects = service.projects()
             project = projects.firstOrNull { it.id == saved?.projectId }
             status = if (projects.isEmpty()) "暂无可用电费项目" else ""
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
-            status = error.message ?: "项目读取失败"
+            status = "项目读取失败：${error.message ?: "请重试"}"
         }
     }
     LaunchedEffect(project?.id) {
@@ -292,7 +338,9 @@ private fun ElectricityContent(
         try {
             areas = service.areas(selected.id)
             area = areas.firstOrNull { it.id == saved?.areaId }
-        } catch (error: Exception) { status = error.message ?: "校区读取失败" }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) { status = "校区读取失败：${error.message ?: "请重试"}" }
     }
     LaunchedEffect(project?.id, area?.id) {
         val selectedProject = project ?: return@LaunchedEffect
@@ -301,7 +349,9 @@ private fun ElectricityContent(
         try {
             buildings = service.buildings(selectedProject.id, selectedArea.id)
             building = buildings.firstOrNull { it.id == saved?.buildingId }
-        } catch (error: Exception) { status = error.message ?: "楼栋读取失败" }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) { status = "楼栋读取失败：${error.message ?: "请重试"}" }
     }
     LaunchedEffect(project?.id, area?.id, building?.id) {
         val selectedProject = project ?: return@LaunchedEffect
@@ -311,7 +361,9 @@ private fun ElectricityContent(
         try {
             rooms = service.rooms(selectedProject.id, selectedArea.id, selectedBuilding.id)
             room = rooms.firstOrNull { it.id == saved?.roomId }
-        } catch (error: Exception) { status = error.message ?: "房间读取失败" }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) { status = "房间读取失败：${error.message ?: "请重试"}" }
     }
 
     val dorm = if (project != null && area != null && building != null && room != null) {
@@ -363,9 +415,13 @@ private fun ElectricityContent(
                         try {
                             repository.saveBalance(service.electricityBalance(selected), System.currentTimeMillis())
                             status = "余额已更新"
+                        } catch (error: CancellationException) {
+                            throw error
                         } catch (error: Exception) {
-                            status = error.message ?: "余额读取失败"
-                        } finally { refreshing = false }
+                            status = "余额读取失败：${error.message ?: "请重试"}"
+                        } finally {
+                            refreshing = false
+                        }
                     }
                 },
                 enabled = dorm != null && !refreshing,

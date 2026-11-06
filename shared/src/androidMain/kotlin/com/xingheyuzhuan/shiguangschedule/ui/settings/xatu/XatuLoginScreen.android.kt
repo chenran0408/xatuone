@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellationException
 import com.xingheyuzhuan.shiguangschedule.Destination
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccount
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccountRepository
@@ -89,6 +92,8 @@ private fun XatuWorkspaceScreen(onNavigate: (Destination) -> Unit, onBack: () ->
     val savedAccount by accountRepository.account.collectAsState(initial = XatuAccount("", false))
     var account by rememberSaveable { mutableStateOf("") }
     var selectedPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var accountActionInProgress by remember { mutableStateOf(false) }
+    var accountStatus by rememberSaveable { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     LaunchedEffect(savedAccount.studentNumber) {
         if (account.isBlank()) account = savedAccount.studentNumber
@@ -130,27 +135,50 @@ private fun XatuWorkspaceScreen(onNavigate: (Destination) -> Unit, onBack: () ->
             AccountPanel(
                 savedAccount = savedAccount,
                 account = account,
-                onAccountChange = { account = it },
+                onAccountChange = { account = it; accountStatus = "" },
+                actionInProgress = accountActionInProgress,
+                status = accountStatus,
                 onLogin = {
+                    accountActionInProgress = true
+                    accountStatus = "正在准备登录…"
                     scope.launch {
-                        val next = account.trim()
-                        if (savedAccount.studentNumber.isNotBlank() && savedAccount.studentNumber != next) {
-                            clearXatuSession()
-                            campusRepository.clear()
-                            academicRepository.clearAccount(savedAccount.studentNumber)
-                            accountRepository.markLoggedOut()
+                        try {
+                            val next = account.trim()
+                            if (savedAccount.studentNumber.isNotBlank() && savedAccount.studentNumber != next) {
+                                clearXatuSession()
+                                campusRepository.clear()
+                                academicRepository.clearAccount(savedAccount.studentNumber)
+                                accountRepository.markLoggedOut()
+                            }
+                            accountRepository.saveStudentNumber(next)
+                            onNavigate(Destination.WebView(XATU_LOGIN_URL, xatuLogin = true))
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            accountStatus = "账号切换失败：${error.message ?: "请重试"}"
+                        } finally {
+                            accountActionInProgress = false
                         }
-                        accountRepository.saveStudentNumber(next)
-                        onNavigate(Destination.WebView(XATU_LOGIN_URL, xatuLogin = true))
                     }
                 },
                 onLogout = {
+                    accountActionInProgress = true
+                    accountStatus = "正在退出登录…"
                     scope.launch {
-                        clearXatuSession()
-                        campusRepository.clear()
-                        if (savedAccount.studentNumber.isNotBlank()) academicRepository.clearAccount(savedAccount.studentNumber)
-                        accountRepository.clear()
-                        account = ""
+                        try {
+                            clearXatuSession()
+                            campusRepository.clear()
+                            if (savedAccount.studentNumber.isNotBlank()) academicRepository.clearAccount(savedAccount.studentNumber)
+                            accountRepository.clear()
+                            account = ""
+                            accountStatus = "已退出登录"
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            accountStatus = "退出登录失败：${error.message ?: "请重试"}"
+                        } finally {
+                            accountActionInProgress = false
+                        }
                     }
                 }
             )
@@ -210,6 +238,8 @@ private fun AccountPanel(
     savedAccount: XatuAccount,
     account: String,
     onAccountChange: (String) -> Unit,
+    actionInProgress: Boolean,
+    status: String,
     onLogin: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -252,20 +282,29 @@ private fun AccountPanel(
                     value = account,
                     onValueChange = onAccountChange,
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !actionInProgress,
                     label = { Text("学号") },
                     singleLine = true
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onLogin, enabled = account.isNotBlank(), modifier = Modifier.weight(1f)) {
-                        Text("网页登录")
+                    Button(onClick = onLogin, enabled = account.isNotBlank() && !actionInProgress, modifier = Modifier.weight(1f)) {
+                        if (actionInProgress) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("网页登录")
                     }
                     if (savedAccount.loggedIn) {
-                        TextButton(onClick = { editingAccount = false }) { Text("取消") }
-                        TextButton(onClick = onLogout) { Text("退出登录") }
+                        TextButton(onClick = { editingAccount = false }, enabled = !actionInProgress) { Text("取消") }
+                        TextButton(onClick = onLogout, enabled = !actionInProgress) { Text("退出登录") }
                     }
                 }
             } else {
-                TextButton(onClick = onLogout, modifier = Modifier.align(Alignment.End)) { Text("退出登录") }
+                TextButton(onClick = onLogout, enabled = !actionInProgress, modifier = Modifier.align(Alignment.End)) { Text("退出登录") }
+            }
+            if (status.isNotBlank()) {
+                Text(
+                    status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if ("失败" in status) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -295,15 +334,15 @@ private fun SectionHeading(title: String, subtitle: String) {
 @Composable
 private fun PortalAction(title: String, subtitle: String, icon: DrawableResource, modifier: Modifier, onClick: () -> Unit) {
     Card(
-        modifier = modifier.height(92.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 92.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
-        Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(vectorResource(icon), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

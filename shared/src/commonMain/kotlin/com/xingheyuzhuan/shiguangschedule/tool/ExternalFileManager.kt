@@ -36,7 +36,7 @@ object ExternalFileManager {
     val pendingFile = _pendingFile.asStateFlow()
 
     /**
-     * 任意原生平台（Android / iOS / Desktop）捕获到外部文件后调用此方法投递
+     * Android 收到外部文件后调用此方法投递
      */
     fun onFileReceived(fileName: String, bytes: ByteArray) {
         val destination = resolveDestination(fileName)

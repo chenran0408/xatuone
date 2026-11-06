@@ -296,7 +296,7 @@ fun WebViewScreen(
                                 }
                             )
 
-                            if (!xatuLogin && !isDesktopPlatform) {
+                            if (!xatuLogin) {
                                 val switchTextId = if (isDesktopMode) Res.string.action_switch_to_phone_mode else Res.string.action_switch_to_desktop_mode
                                 val switchIcon = if (isDesktopMode) vectorResource(Res.drawable.phone_android_24px) else vectorResource(Res.drawable.desktop_windows_24px)
 

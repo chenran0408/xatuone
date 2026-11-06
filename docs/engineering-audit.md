@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- Kotlin Multiplatform、Compose Multiplatform 1.11.1、Navigation 3。
+- Kotlin Multiplatform 的 Android target、Compose Multiplatform 1.11.1、Navigation 3。`commonMain` 仅用于 Android 应用内部共享，不构建其他平台。
 - Android 使用 Koin、Room 3、DataStore、Ktor/OkHttp、WebView 和 ML Kit OCR。
 - Android Release 已启用 R8 和资源压缩。
 

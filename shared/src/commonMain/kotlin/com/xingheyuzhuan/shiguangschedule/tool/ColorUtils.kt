@@ -10,7 +10,7 @@ val DEFAULT_SEED_COLOR = Color(0xFF6750A4)
 
 /**
  * 纯 Kotlin 动态配色生成函数
- * 供小组件快照构建、后台 Worker、iOS 共享层等无 Compose 上下文的模块直接调用
+ * 供小组件快照构建和后台 Worker 等无 Compose 上下文的模块直接调用
  */
 fun createMaterialKolorScheme(
     darkTheme: Boolean,
