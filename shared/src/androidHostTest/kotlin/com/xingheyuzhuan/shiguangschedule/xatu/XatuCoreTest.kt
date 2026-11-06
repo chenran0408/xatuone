@@ -79,4 +79,39 @@ class XatuCoreTest {
         assertEquals("12", exam.seat)
         assertEquals("|高等数学||2027-01-08 09:00-11:00|教1-101", exam.id)
     }
+
+    @Test
+    fun planParserBuildsSectionsAndCourseCompletion() {
+        val html = """
+            <div>姓名：张三 专业/专业方向：计算机科学 GPA：3.2 要求学分/实修学分：160/120</div>
+            <table>
+              <tr class="darkColumn"><td>通识教育</td><td>30</td><td>24</td></tr>
+              <tr><td>1</td><td>230001</td><td>程序设计</td><td>4</td><td>4</td><td>4.0</td><td>是</td></tr>
+            </table>
+        """.trimIndent()
+
+        val plan = XatuAcademicParser.plan(html)
+
+        assertEquals("张三", plan.studentName)
+        assertEquals("计算机科学", plan.major)
+        assertEquals(160.0, plan.requiredCredits)
+        assertEquals(120.0, plan.earnedCredits)
+        assertEquals("程序设计", plan.sections.single().courses.single().name)
+        assertTrue(plan.sections.single().courses.single().passed)
+    }
+
+    @Test
+    fun catalogParserReadsCourseMetadata() {
+        val html = """
+            <table><tr><td>230002</td><td class="course">数据结构</td><td>3</td><td>48</td><td></td><td></td><td></td><td></td><td></td><td>2026秋</td><td></td><td>是</td></tr></table>
+        """.trimIndent()
+
+        val course = XatuAcademicParser.catalog(html).single()
+
+        assertEquals("230002", course.code)
+        assertEquals("数据结构", course.name)
+        assertEquals("必修", course.nature)
+        assertEquals("3", course.credits)
+        assertEquals("48", course.hours)
+    }
 }
