@@ -9,14 +9,14 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
-import org.koin.mp.KoinPlatform
 import java.io.File
 import java.time.LocalDate
 import org.koin.core.annotation.Single
 
 @Single
 class XatuCalendarService(
-    private val client: OkHttpClient
+    private val client: OkHttpClient,
+    private val context: Context
 ) {
     suspend fun latest(): XatuCalendar = withContext(Dispatchers.IO) {
         val index = get(INDEX, INDEX)
@@ -30,7 +30,7 @@ class XatuCalendarService(
             ?: document.select("img[src]").first { Regex("(?i)\\.(jpg|jpeg|png)(?:\\?|$)").containsMatchIn(it.attr("src")) }
         val imageUrl = image.absUrl(if (image.hasAttr("orisrc")) "orisrc" else "src")
         val imageBytes = getBytes(imageUrl, page)
-        val imageFile = File(KoinPlatform.getKoin().get<Context>().filesDir, "xatu-calendar.jpg")
+        val imageFile = File(context.filesDir, "xatu-calendar.jpg")
         imageFile.writeBytes(imageBytes)
         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
         val rawText = bitmap?.let { XatuCalendarOcr.read(it).also { _ -> it.recycle() } }.orEmpty()
