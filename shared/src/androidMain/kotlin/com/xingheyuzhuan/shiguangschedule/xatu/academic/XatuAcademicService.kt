@@ -2,11 +2,17 @@ package com.xingheyuzhuan.shiguangschedule.xatu.academic
 
 import android.webkit.CookieManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.jsoup.Jsoup
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import org.koin.core.annotation.Single
 
 class XatuSessionExpired : IllegalStateException("教务登录已失效，请重新登录")
@@ -27,12 +33,27 @@ class XatuAcademicService(
             .header("Cookie", cookieManager.getCookie(url.toString()).orEmpty())
             .header("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36")
             .build()
-        client.newCall(request).execute().use { response ->
+        execute(request).use { response ->
             val html = response.body.string()
             if (!response.isSuccessful) error("教务系统返回 HTTP ${response.code}")
             if (html.contains("name=\"password\"") || html.contains("authserver")) throw XatuSessionExpired()
             html
         }
+    }
+
+    private suspend fun execute(request: Request): Response = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, error: java.io.IOException) {
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (continuation.isActive) continuation.resume(response)
+                else response.close()
+            }
+        })
     }
 
     suspend fun grades(semesterId: String): XatuGradePage {
