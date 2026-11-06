@@ -28,9 +28,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -65,6 +68,7 @@ import shiguangschedule.shared.generated.resources.title_semester_not_set
 import shiguangschedule.shared.generated.resources.title_today_schedule
 import shiguangschedule.shared.generated.resources.title_vacation_until_start
 import shiguangschedule.shared.generated.resources.week_days_full_names
+import kotlinx.coroutines.delay
 import kotlin.time.Clock
 
 private const val DEFAULT_TIME_ZERO = "00:00"
@@ -82,6 +86,17 @@ fun TodayScheduleScreen(
     val uiState by viewModel.uiState.collectAsState()
     val gridStyle by viewModel.gridStyle.collectAsState()
     val isDark = LocalIsDarkTheme.current
+    var currentTime by remember {
+        mutableStateOf(Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time
+            currentTime = now
+            delay(60_000L - now.second * 1_000L - now.nanosecond / 1_000_000L)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -109,7 +124,7 @@ fun TodayScheduleScreen(
                     }
                 }
                 is TodayUiState.Success -> {
-                    TodayContent(state, gridStyle, isDark)
+                    TodayContent(state, gridStyle, isDark, currentTime)
                 }
             }
         }
@@ -121,10 +136,9 @@ fun TodayContent(
     state: TodayUiState.Success,
     gridStyle: ScheduleGridStyle,
     isDark: Boolean,
+    currentTime: LocalTime,
     modifier: Modifier = Modifier
 ) {
-    val currentTime = remember { Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time }
-
     val targetScrollIndex = remember(state.courses, currentTime) {
         val firstActiveIndex = state.courses.indexOfFirst { model ->
             try {
@@ -211,7 +225,7 @@ fun TodayContent(
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 itemsIndexed(state.courses) { _, model ->
-                    CourseTimelineItem(model, gridStyle, isDark)
+                    CourseTimelineItem(model, gridStyle, isDark, currentTime)
                 }
                 item {
                     Spacer(modifier = Modifier.height(32.dp))
@@ -225,9 +239,9 @@ fun TodayContent(
 fun CourseTimelineItem(
     model: CourseDisplayModel,
     gridStyle: ScheduleGridStyle,
-    isDark: Boolean
+    isDark: Boolean,
+    currentTime: LocalTime
 ) {
-    val currentTime = remember { Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time }
     val isFinished = remember(model.endTime, currentTime) {
         try {
             LocalTime.parse(model.endTime ?: DEFAULT_TIME_ZERO) < currentTime

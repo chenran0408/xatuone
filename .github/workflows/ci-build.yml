@@ -138,7 +138,7 @@ jobs:
       - name: 构建 Release APK
         run: |
           chmod +x ./gradlew
-          ./gradlew :shared:compileAndroidMain :androidApp:lintRelease --no-daemon --stacktrace
+          ./gradlew :shared:compileAndroidMain :shared:testAndroidHostTest :androidApp:lintRelease --no-daemon --stacktrace
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file="${{ github.workspace }}/androidApp/release.jks" \
             -Pandroid.injected.signing.store.password="${{ secrets.KEYSTORE_PASSWORD }}" \

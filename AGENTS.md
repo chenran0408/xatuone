@@ -14,14 +14,14 @@
 - 服务端数据由对应 repository 持有；页面使用单一状态流观察。
 - 账号相关数据必须使用学号或账号键隔离。
 - Cookie、成绩、考试、宿舍和定位属于敏感数据，不写入普通日志。
-- WebView 原生桥必须限制受信页面来源；新增写入型桥接动作需要同步更新来源校验。
+- 自定义签到位置桥接限制在 XATU 签到页面使用；通用课程导入写操作必须先由宿主启动导入会话，不能将此门控描述为 Web 来源白名单。
 
 ## 验证命令
 
 ```text
 ./gradlew :shared:compileAndroidMain
 ./gradlew :shared:testAndroidHostTest
-./gradlew :androidApp:lintVitalRelease
+./gradlew :androidApp:lintRelease
 ./gradlew :androidApp:assembleRelease
 ```
 

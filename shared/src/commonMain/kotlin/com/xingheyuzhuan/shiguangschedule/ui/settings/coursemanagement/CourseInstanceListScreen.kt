@@ -3,6 +3,7 @@ package com.xingheyuzhuan.shiguangschedule.ui.settings.coursemanagement
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +48,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.a11y_enter_selection_mode
 import shiguangschedule.shared.generated.resources.a11y_exit_selection_mode
+import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.action_add
 import shiguangschedule.shared.generated.resources.action_deselect_all
 import shiguangschedule.shared.generated.resources.action_select_all
@@ -59,6 +62,7 @@ import shiguangschedule.shared.generated.resources.done_all_24px
 import shiguangschedule.shared.generated.resources.label_weeks_format
 import shiguangschedule.shared.generated.resources.menu_open_24px
 import shiguangschedule.shared.generated.resources.title_selected_items_count
+import shiguangschedule.shared.generated.resources.a11y_delete_selected
 import shiguangschedule.shared.generated.resources.week_days_full_names
 
 /**
@@ -118,7 +122,9 @@ fun CourseInstanceListScreen(
                     IconButton(onClick = if (isSelectionMode) viewModel::toggleSelectionMode else onNavigateBack) {
                         Icon(
                             if (isSelectionMode) vectorResource(Res.drawable.close_24px) else vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = null
+                            contentDescription = stringResource(
+                                if (isSelectionMode) Res.string.a11y_exit_selection_mode else Res.string.a11y_back
+                            )
                         )
                     }
                 },
@@ -136,7 +142,7 @@ fun CourseInstanceListScreen(
                         IconButton(onClick = {
                             scope.launch { viewModel.deleteSelectedCourses() }
                         }, enabled = selectedCount > 0) {
-                            Icon(vectorResource(Res.drawable.delete_24px), contentDescription = null)
+                            Icon(vectorResource(Res.drawable.delete_24px), contentDescription = stringResource(Res.string.a11y_delete_selected))
                         }
                     }
 
@@ -158,30 +164,39 @@ fun CourseInstanceListScreen(
             }
         }
     ) { paddingValues ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(courseInstances, key = { it.course.id }) { courseWithWeeks ->
-                CourseInstanceCard(
-                    courseWithWeeks = courseWithWeeks,
-                    isSelected = selectedCourseIds.contains(courseWithWeeks.course.id),
-                    colorMaps = uiState.courseColorMaps,
-                    onCourseClick = { courseId ->
-                        if (isSelectionMode) {
+        if (courseInstances.isEmpty()) {
+            Box(
+                Modifier.fillMaxSize().padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("当前课表中没有该课程的实例", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 160.dp),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(courseInstances, key = { it.course.id }) { courseWithWeeks ->
+                    CourseInstanceCard(
+                        courseWithWeeks = courseWithWeeks,
+                        isSelected = selectedCourseIds.contains(courseWithWeeks.course.id),
+                        colorMaps = uiState.courseColorMaps,
+                        onCourseClick = { courseId ->
+                            if (isSelectionMode) {
+                                viewModel.toggleCourseSelection(courseId)
+                            } else {
+                                onNavigateToEditCourse(courseId)
+                            }
+                        },
+                        onCourseLongClick = { courseId ->
+                            if (!isSelectionMode) viewModel.toggleSelectionMode()
                             viewModel.toggleCourseSelection(courseId)
-                        } else {
-                            onNavigateToEditCourse(courseId)
                         }
-                    },
-                    onCourseLongClick = { courseId ->
-                        if (!isSelectionMode) viewModel.toggleSelectionMode()
-                        viewModel.toggleCourseSelection(courseId)
-                    }
-                )
+                    )
+                }
             }
         }
     }

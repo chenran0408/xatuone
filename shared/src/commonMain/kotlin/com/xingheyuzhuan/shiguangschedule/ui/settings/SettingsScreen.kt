@@ -417,8 +417,8 @@ private fun AdvancedSettingsSection(onNavigate: (Destination) -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
             SettingItem(
-                title = "XATU 用户管理",
-                subtitle = "登录西安工业大学教务系统并管理会话",
+                title = "教务账号与会话",
+                subtitle = "也可在校园门户中直接管理",
                 onClick = { onNavigate(Destination.XatuLogin) }
             )
             SettingItem(
@@ -487,7 +487,11 @@ private fun SettingItem(
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         trailingContent()
     }

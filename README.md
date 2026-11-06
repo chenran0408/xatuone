@@ -9,11 +9,12 @@
 - `androidApp`：Android 入口、WebView 会话、通知和桌面小组件。
 - `docs`：架构约定和工程审计记录。
 
-XATU 页面复用同一个 Android WebView 会话。Cookie 只在用户主动退出登录时清理，页面切换不会销毁会话。
+XATU 页面复用 Android WebView 的持久化会话。Cookie 在用户退出登录或切换学号时清理，普通页面切换会保留会话。
 
 ## 构建
 
 ```text
+./gradlew :shared:compileAndroidMain
 ./gradlew :shared:testAndroidHostTest
 ./gradlew :androidApp:lintRelease
 ./gradlew :androidApp:assembleRelease

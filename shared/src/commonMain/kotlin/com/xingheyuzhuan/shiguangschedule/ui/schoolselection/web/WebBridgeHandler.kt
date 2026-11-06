@@ -22,6 +22,7 @@ class WebBridgeHandler(
 ) {
     private val json = CourseImportExport.json
     private var importTableId: String? = null
+    private var importActive = false
 
     /**
      * 状态标记：标记当前任务下是否已经成功执行了“作息方案（组合作息）”导入。
@@ -42,6 +43,7 @@ class WebBridgeHandler(
      */
     fun setImportTableId(tableId: String?) {
         this.importTableId = tableId
+        this.importActive = tableId != null
         this.isComboScheduleImported = false // 切换或重置课表时重置状态
         this.latestPresetTimeSlots = null    // 重置基准时间缓存
     }
@@ -53,6 +55,11 @@ class WebBridgeHandler(
         try {
             val message = bridgeJson.decodeFromString<JsBridgeMessage>(jsonString)
             val callbackId = message.callbackId
+
+            if (message.action in WRITE_ACTIONS && !importActive) {
+                if (callbackId != null) rejectJsPromise(callbackId, "当前页面未启动课程导入。")
+                return
+            }
 
             when (message.action) {
                 "showToast" -> parsePayload<ShowToastPayload>(message.payload)?.let {
@@ -394,6 +401,7 @@ class WebBridgeHandler(
      */
     fun notifyTaskCompletion() {
         importTableId = null
+        importActive = false
         isComboScheduleImported = false
         latestPresetTimeSlots = null // 任务结束清理内存
         onTaskCompleted()
@@ -423,6 +431,15 @@ class WebBridgeHandler(
                 baseSlot.copy(alias = null)
             }
         }
+    }
+
+    private companion object {
+        val WRITE_ACTIONS = setOf(
+            "saveImportedCourses",
+            "saveCourseConfig",
+            "savePresetTimeSlots",
+            "saveComboSchedule"
+        )
     }
 
     private inline fun <reified T> parsePayload(payloadJson: String?): T? {

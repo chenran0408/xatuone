@@ -12,10 +12,13 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.CourseTableRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.StyleSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.TimeScheduleRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -43,11 +46,20 @@ class TodayScheduleViewModel(
     val gridStyle: StateFlow<ScheduleGridStyle> = styleSettingsRepository.styleFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleGridStyle())
 
+    private val currentDate = flow {
+        while (true) {
+            emit(Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date)
+            delay(60_000L)
+        }
+    }.distinctUntilChanged()
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<TodayUiState> = appSettingsRepository.getAppSettings()
-        .flatMapLatest { settings ->
+    val uiState: StateFlow<TodayUiState> = combine(
+        appSettingsRepository.getAppSettings(),
+        currentDate
+    ) { settings, today -> settings to today }
+        .flatMapLatest { (settings, today) ->
             val tableId = settings.currentCourseTableId
-            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
             val dayOfWeek = today.dayOfWeek.isoDayNumber
 
             combine(

@@ -55,6 +55,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -147,7 +150,7 @@ fun AdaptiveNavigationScaffold(
     val layoutType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(currentWindowAdaptiveInfo())
 
     Box(modifier = modifier.fillMaxSize()) {
-        when (layoutType) {
+        when (if (layoutType == NavigationSuiteType.NavigationBar) NavigationSuiteType.NavigationBar else NavigationSuiteType.NavigationRail) {
             NavigationSuiteType.NavigationRail -> {
                 Row(modifier = Modifier.fillMaxSize()) {
                     AnimatedVisibility(
@@ -232,9 +235,6 @@ fun AdaptiveNavigationScaffold(
                 }
             }
 
-            else -> {
-                content(PaddingValues(0.dp))
-            }
         }
     }
 }
@@ -256,13 +256,13 @@ private fun FixedWidthNavBarContainer(
         // 测量各 Tab 处于未选中和选中状态时的宽度
         val unselectedWidths = navItems.mapIndexed { index, item ->
             subcompose("measure_unselected_$index") {
-                TabContent(item = item, isSelected = false, textAlpha = 0f)
+                TabContent(item = item, isSelected = false, textAlpha = 0f, showLabel = true)
             }.first().measure(constraints).width
         }
 
         val selectedWidths = navItems.mapIndexed { index, item ->
             subcompose("measure_selected_$index") {
-                TabContent(item = item, isSelected = true, textAlpha = 1f)
+                TabContent(item = item, isSelected = true, textAlpha = 1f, showLabel = true)
             }.first().measure(constraints).width
         }
 
@@ -278,20 +278,28 @@ private fun FixedWidthNavBarContainer(
             }
         }
 
+        val compact = maxCapsuleWidth > constraints.maxWidth
+        val compactTabWidth = ((constraints.maxWidth - (navItems.size - 1) * minSpacingPx) / navItems.size)
+            .coerceAtLeast(48.dp.roundToPx())
+        if (compact) maxCapsuleWidth = compactTabWidth * navItems.size + (navItems.size - 1) * minSpacingPx
+
         // 测量实际渲染的 Tab 节点
         val placeables = navItems.mapIndexed { index, item ->
             val isSelected = currentDestination::class == item.destination::class
+            val collapsedWidth = if (compact) compactTabWidth else unselectedWidths[index]
+            val expandedWidth = if (compact) compactTabWidth else selectedWidths[index]
             subcompose("real_$index") {
                 key(item.destination) {
                     AnimatedTabItem(
                         item = item,
                         isSelected = isSelected,
-                        collapsedWidth = with(this@SubcomposeLayout) { unselectedWidths[index].toDp() },
-                        expandedWidth = with(this@SubcomposeLayout) { selectedWidths[index].toDp() },
+                        showLabel = !compact,
+                        collapsedWidth = with(this@SubcomposeLayout) { collapsedWidth.toDp() },
+                        expandedWidth = with(this@SubcomposeLayout) { expandedWidth.toDp() },
                         onSelect = { onTabSelected(item.destination) }
                     )
                 }
-            }.first().measure(constraints)
+            }.first().measure(if (compact) constraints.copy(maxWidth = compactTabWidth) else constraints)
         }
 
         val maxHeight = placeables.maxOfOrNull { it.height } ?: 0
@@ -319,6 +327,7 @@ private fun FixedWidthNavBarContainer(
 private fun AnimatedTabItem(
     item: NavItemData,
     isSelected: Boolean,
+    showLabel: Boolean,
     collapsedWidth: Dp,
     expandedWidth: Dp,
     onSelect: () -> Unit
@@ -351,14 +360,17 @@ private fun AnimatedTabItem(
             .background(pillBgColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { if (!isSelected) onSelect() },
+                indication = null,
+                role = Role.Tab
+            ) { if (!isSelected) onSelect() }
+            .semantics { selected = isSelected },
         contentAlignment = Alignment.CenterStart
     ) {
         TabContent(
             item = item,
             isSelected = isSelected,
-            textAlpha = progress
+            textAlpha = progress,
+            showLabel = showLabel
         )
     }
 }
@@ -370,7 +382,8 @@ private fun AnimatedTabItem(
 private fun TabContent(
     item: NavItemData,
     isSelected: Boolean,
-    textAlpha: Float
+    textAlpha: Float,
+    showLabel: Boolean
 ) {
     val contentColor = if (isSelected) {
         MaterialTheme.colorScheme.onSecondaryContainer
@@ -394,7 +407,7 @@ private fun TabContent(
                 }
         )
 
-        if (textAlpha > 0f) {
+        if (showLabel && textAlpha > 0f) {
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = item.label,

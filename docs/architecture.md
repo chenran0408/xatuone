@@ -21,7 +21,9 @@ XATU Android
 
 页面触发事件，repository 负责缓存和刷新，service 负责网络请求与解析。页面不直接创建网络客户端；XATU 的 CookieManager 和 OkHttpClient 由 Android DI 容器统一提供，也不把服务端响应对象当作 UI 状态长期保存。
 
-账号切换时必须同时处理对应的校园快照、学术缓存和 WebView 会话。WebView 页面切换保留会话，显式退出登录才清理 Cookie。
+学术页面由 `XatuAcademicViewModel` 持有成绩、考试、学业方案和学期选择状态。页面只渲染 `StateFlow` 并发送学期选择事件；ViewModel 在页面、账号或学期改变时取消旧请求，避免过期响应覆盖当前页面。
+
+账号切换时必须同时处理对应的校园快照、学术缓存和 WebView 会话。切换学号或显式退出登录时清理 Cookie；普通 WebView 页面切换保留会话。
 
 ## 新增 XATU 服务
 

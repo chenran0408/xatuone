@@ -6,15 +6,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button as MiuixButton
+import androidx.compose.material3.Card as MaterialCard
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,10 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusSnapshot
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCalendarSemester
@@ -35,7 +48,6 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.XatuDormSelection
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCheckinLocation
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccount
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccountRepository
-import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuAcademicRepository
 import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuExam
 import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuGrade
 import com.xingheyuzhuan.shiguangschedule.xatu.academic.XatuGradePage
@@ -49,13 +61,7 @@ import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusService
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuDorm
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.Card as MiuixCard
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Text as MiuixText
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
+import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 actual fun XatuServicePage(
@@ -63,61 +69,24 @@ actual fun XatuServicePage(
     onOpen: (String) -> Unit,
     modifier: Modifier
 ) {
-    val academic: XatuAcademicRepository = koinInject()
+    val academicViewModel: XatuAcademicViewModel = koinViewModel()
+    val academicState by academicViewModel.uiState.collectAsState()
     val accountRepository: XatuAccountRepository = koinInject()
     val account by accountRepository.account.collectAsState(initial = XatuAccount("", false))
     val campus: XatuCampusRepository = koinInject()
     val snapshot by campus.snapshot.collectAsState(initial = XatuCampusSnapshot())
     val campusService: XatuCampusService = koinInject()
     val calendarService: XatuCalendarService = koinInject()
-    var grades by remember(page) { mutableStateOf<XatuGradePage?>(null) }
-    var exams by remember(page) { mutableStateOf<List<XatuExam>?>(null) }
-    var plan by remember(page) { mutableStateOf<XatuStudyPlan?>(null) }
-    var catalog by remember(page) { mutableStateOf<List<XatuCourseInfo>>(emptyList()) }
-    var semesters by remember(page) { mutableStateOf<List<XatuSemester>>(emptyList()) }
-    var selectedSemesterId by remember(page) { mutableStateOf<String?>(null) }
     var status by remember(page) { mutableStateOf("正在读取教务数据…") }
     var calendarRefreshing by remember(page) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(page, account.studentNumber, account.loggedIn) {
+        if (page == "plan" || page == "grades" || page == "exams") academicViewModel.load(page)
+    }
+
     LaunchedEffect(page, account.studentNumber) {
         when {
-            page == "plan" -> {
-                plan = null
-                catalog = emptyList()
-                if (!account.loggedIn || account.studentNumber.isBlank()) {
-                    status = "请先登录教务账号"
-                    return@LaunchedEffect
-                }
-                try {
-                    val cached = academic.loadCached(account.studentNumber, "all")
-                    plan = cached?.plan
-                    catalog = cached?.catalog.orEmpty()
-                    status = if (plan != null) "已显示缓存，正在更新…" else "正在读取学业完成情况…"
-                    val updated = academic.refreshPlan(account.studentNumber)
-                    plan = updated.plan
-                    catalog = updated.catalog
-                    status = "已更新"
-                } catch (error: Exception) {
-                    status = error.message ?: "读取学业完成情况失败，已保留本地缓存"
-                }
-            }
-            page == "grades" || page == "exams" -> {
-                grades = null
-                exams = null
-                selectedSemesterId = null
-                if (!account.loggedIn || account.studentNumber.isBlank()) {
-                    status = "请先登录教务账号"
-                    return@LaunchedEffect
-                }
-            try {
-                semesters = academic.semesters()
-                selectedSemesterId = semesters.firstOrNull()?.id
-                    status = if (semesters.isEmpty()) "暂无可选学期" else ""
-            } catch (error: Exception) {
-                status = error.message ?: "学期读取失败"
-            }
-            }
             page == "calendar" && snapshot.calendar == null -> {
                 try {
                     campus.saveCalendar(calendarService.latest())
@@ -131,46 +100,19 @@ actual fun XatuServicePage(
         }
     }
 
-    LaunchedEffect(page, account.studentNumber, selectedSemesterId) {
-        val semesterId = selectedSemesterId ?: return@LaunchedEffect
-        if (!account.loggedIn || account.studentNumber.isBlank()) {
-            status = "请先登录教务账号"
-            return@LaunchedEffect
-        }
-        try {
-            grades = null
-            exams = null
-            val cached = academic.loadCached(account.studentNumber, semesterId)
-            if (page == "grades") {
-                grades = cached?.grades
-                status = if (cached?.grades != null) "已显示缓存，正在更新…" else "正在读取成绩…"
-                grades = academic.refreshGrades(account.studentNumber, semesterId).grades
-                status = "已更新：${semesters.firstOrNull { it.id == semesterId }?.name.orEmpty()}"
-            } else if (page == "exams") {
-                exams = cached?.exams
-                status = if (cached != null) "已显示缓存，正在更新…" else "正在读取考试安排…"
-                exams = academic.refreshExams(account.studentNumber, semesterId).exams
-                status = "已更新：${semesters.firstOrNull { it.id == semesterId }?.name.orEmpty()}"
-            }
-        } catch (error: Exception) {
-            status = error.message ?: "读取失败，已保留本地缓存"
-        }
-    }
-
-    MiuixTheme(colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-        Column(
-            modifier = modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
             when (page) {
-                "plan" -> PlanContent(plan, catalog, status)
+                "plan" -> PlanContent(academicState.plan, academicState.catalog, academicState.status)
                 "grades" -> {
-                    SemesterPicker(semesters, selectedSemesterId, { selectedSemesterId = it })
-                    GradesContent(grades, status)
+                    SemesterPicker(academicState.semesters, academicState.selectedSemesterId, academicViewModel::selectSemester)
+                    GradesContent(academicState.grades, academicState.status)
                 }
                 "exams" -> {
-                    SemesterPicker(semesters, selectedSemesterId, { selectedSemesterId = it })
-                    ExamsContent(exams, status)
+                    SemesterPicker(academicState.semesters, academicState.selectedSemesterId, academicViewModel::selectSemester)
+                    ExamsContent(academicState.exams, academicState.status)
                 }
                 "calendar" -> LinkContent(
                     snapshot.calendar?.let { "${it.title}（${it.semesters.size} 个学期）" } ?: "校历使用教务处公开页面，查看学期和假期安排。",
@@ -206,7 +148,48 @@ actual fun XatuServicePage(
                     onOpen
                 )
             }
-        }
+    }
+}
+
+@Composable
+private fun SmallTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+}
+
+@Composable
+private fun MiuixCard(
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    MaterialCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        content = { Column(Modifier.padding(16.dp), content = content) }
+    )
+}
+
+@Composable
+private fun MiuixText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
+    style: TextStyle = MaterialTheme.typography.bodyMedium
+) {
+    Text(text = text, modifier = modifier, color = color, fontSize = fontSize, style = style)
+}
+
+@Composable
+private fun StatusFeedback(status: String) {
+    if (status.isBlank()) return
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (status.contains("正在")) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        Text(
+            status,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (status.contains("失败") || status.contains("请输入有效")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -217,16 +200,25 @@ private fun CheckinLocationContent(snapshot: XatuCampusSnapshot, campus: XatuCam
     var latitude by remember(saved) { mutableStateOf(if (saved.enabled) saved.latitude.toString() else "") }
     var longitude by remember(saved) { mutableStateOf(if (saved.enabled) saved.longitude.toString() else "") }
     var enabled by remember(saved) { mutableStateOf(saved.enabled) }
+    var status by remember { mutableStateOf("") }
     MiuixCard(Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SmallTitle("签到位置")
             MiuixText("保存坐标后，仅在 XATU 签到网页中使用该位置。")
-            OutlinedTextField(latitude, { latitude = it }, Modifier.fillMaxWidth(), label = { MiuixText("纬度") }, singleLine = true)
-            OutlinedTextField(longitude, { longitude = it }, Modifier.fillMaxWidth(), label = { MiuixText("经度") }, singleLine = true)
+            OutlinedTextField(latitude, { latitude = it; status = "" }, Modifier.fillMaxWidth(), label = { MiuixText("纬度") }, singleLine = true)
+            OutlinedTextField(longitude, { longitude = it; status = "" }, Modifier.fillMaxWidth(), label = { MiuixText("经度") }, singleLine = true)
+            StatusFeedback(status)
             MiuixButton(onClick = {
                 val lat = latitude.toDoubleOrNull()
                 val lng = longitude.toDoubleOrNull()
-                if (lat != null && lng != null) scope.launch { campus.saveCheckinLocation(XatuCheckinLocation(enabled, lat, lng, "GCJ02")) }
+                if (lat == null || lng == null) {
+                    status = "请输入有效的纬度和经度"
+                } else {
+                    scope.launch {
+                        campus.saveCheckinLocation(XatuCheckinLocation(enabled, lat, lng, "GCJ02"))
+                        status = "签到位置已保存"
+                    }
+                }
             }, modifier = Modifier.fillMaxWidth()) { MiuixText("保存签到位置") }
             MiuixButton(onClick = { enabled = !enabled; scope.launch { campus.saveCheckinLocation(saved.copy(enabled = enabled)) } }, modifier = Modifier.fillMaxWidth()) {
                 MiuixText(if (enabled) "已启用自定义位置" else "已停用自定义位置")
@@ -239,14 +231,27 @@ private fun CheckinLocationContent(snapshot: XatuCampusSnapshot, campus: XatuCam
 @Composable
 private fun SemesterPicker(semesters: List<XatuSemester>, selected: String?, onSelect: (String) -> Unit) {
     if (semesters.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SmallTitle("选择学期")
-        semesters.forEach { semester ->
-            MiuixButton(
-                onClick = { onSelect(semester.id) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = semester.id != selected
-            ) { MiuixText(if (semester.id == selected) "当前：${semester.name}" else semester.name) }
+        Box {
+            MiuixButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MiuixText(semesters.firstOrNull { it.id == selected }?.name ?: "选择学期", modifier = Modifier.weight(1f))
+                    MiuixText("⌄", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                semesters.forEach { semester ->
+                    DropdownMenuItem(
+                        text = { MiuixText(semester.name) },
+                        onClick = {
+                            expanded = false
+                            if (semester.id != selected) onSelect(semester.id)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -337,7 +342,7 @@ private fun ElectricityContent(
                 building = it; room = null
             }
             OptionPicker("房间", rooms, room) { room = it }
-            if (status.isNotBlank()) MiuixText(status)
+            StatusFeedback(status)
             if (savedMatches && snapshot.balance != null) MiuixText("余额：${snapshot.balance} 元")
             if (savedMatches && snapshot.balanceHistory.isNotEmpty()) {
                 SmallTitle("余额记录")
@@ -389,7 +394,7 @@ private fun BalanceTrend(history: List<com.xingheyuzhuan.shiguangschedule.data.r
     val min = points.minOf { it.second }
     val max = points.maxOf { it.second }
     val range = (max - min).coerceAtLeast(1f)
-    val lineColor = Color(0xFF3478F6)
+    val lineColor = MaterialTheme.colorScheme.primary
     Canvas(Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 8.dp)) {
         val step = size.width / (points.size - 1)
         val offsets = points.mapIndexed { index, point ->
@@ -435,11 +440,10 @@ private fun GradesContent(page: XatuGradePage?, status: String) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SmallTitle("成绩")
             if (page == null) {
-                CircularProgressIndicator()
-                MiuixText(status)
+                StatusFeedback(status)
                 return@Column
             }
-            MiuixText(status)
+            StatusFeedback(status)
             page.summary.count?.let { MiuixText("课程数：$it") }
             page.summary.credits?.let { MiuixText("总学分：$it") }
             page.summary.gpa?.let { MiuixText("平均绩点：$it") }
@@ -463,11 +467,10 @@ private fun ExamsContent(exams: List<XatuExam>?, status: String) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SmallTitle("考试安排")
             if (exams == null) {
-                CircularProgressIndicator()
-                MiuixText(status)
+                StatusFeedback(status)
                 return@Column
             }
-            MiuixText(status)
+            StatusFeedback(status)
             if (exams.isEmpty()) MiuixText("暂无考试安排")
             exams.forEach { exam ->
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -485,14 +488,13 @@ private fun PlanContent(plan: XatuStudyPlan?, catalog: List<XatuCourseInfo>, sta
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SmallTitle("学业完成情况")
             if (plan == null) {
-                CircularProgressIndicator()
-                MiuixText(status)
+                StatusFeedback(status)
                 return@Column
             }
             MiuixText("已修 ${plan.earnedCredits} / 要求 ${plan.requiredCredits} 学分")
             if (plan.major.isNotBlank()) MiuixText(plan.major)
             if (plan.gpa.isNotBlank()) MiuixText("GPA：${plan.gpa}")
-            MiuixText(status)
+            StatusFeedback(status)
         }
     }
     if (plan != null) {
@@ -534,7 +536,7 @@ private fun LinkContent(
     MiuixCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MiuixText(description)
-            if (statusText.isNotBlank()) MiuixText(statusText)
+            StatusFeedback(statusText)
             semesters.forEach { semester ->
                 MiuixText("${semester.label}：${semester.start} 至 ${semester.end}")
             }

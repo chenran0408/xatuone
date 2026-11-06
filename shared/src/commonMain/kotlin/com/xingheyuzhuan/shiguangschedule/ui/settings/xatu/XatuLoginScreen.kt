@@ -146,8 +146,8 @@ fun XatuLoginScreenShared(
                     if (savedAccount.loggedIn) {
                         OutlinedButton(
                             onClick = {
-                                clearXatuSession()
                                 coroutineScope.launch {
+                                    clearXatuSession()
                                     campusRepository.clear()
                                     accountRepository.clear()
                                 }
@@ -251,7 +251,7 @@ expect fun XatuServicePage(
     modifier: Modifier
 ): Unit
 
-expect fun clearXatuSession()
+expect suspend fun clearXatuSession()
 
 @Composable
 private fun ServiceButton(title: String, subtitle: String, onClick: () -> Unit) {

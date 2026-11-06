@@ -10,13 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检查分支名称和仓库来源
+        env:
+          TARGET_REPO: ${{ github.repository }}
+          SOURCE_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
         run: |
-          # 获取目标仓库的完整名称 (例如: MyOrg/MyRepo)
-          TARGET_REPO="${{ github.repository }}"
-          # 获取PR来源仓库的完整名称 (如果是Fork, 名称会不同)
-          SOURCE_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-          # 获取PR来源分支的名称 (例如: dev)
-          SOURCE_BRANCH="${{ github.head_ref }}"
           echo "--- 检查信息 ---"
           echo "目标仓库 (本仓库): $TARGET_REPO"
           echo "PR来源仓库: $SOURCE_REPO"
