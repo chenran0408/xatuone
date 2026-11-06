@@ -47,7 +47,7 @@
 ## 尚未处理
 
 - 教务系统当前使用 HTTP，是否能全面切换 HTTPS 需要先确认学校服务端能力。
-- 学术缓存仍为 App 私有目录中的明文 JSON，后续再评估 Keystore 加密和迁移策略。
+- 学术缓存已使用 Android Keystore 加密，读取旧版明文缓存时会在下一次写入时迁移为密文。
 - 通用课程导入 Bridge 仍需结合适配脚本来源建立兼容的来源校验方案。
 - XATU 页面请求状态仍有多个 `LaunchedEffect`，后续可在不改变接口的前提下收敛到 ViewModel 状态模型。
 - XATU 的 CookieManager、OkHttpClient 和校历服务已改为由 Koin 统一提供，页面不再自行创建网络服务实例。

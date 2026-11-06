@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import com.xingheyuzhuan.shiguangschedule.tool.SecureCrypto
 import okio.FileSystem
 import okio.Path
 import okio.buffer
@@ -15,6 +16,7 @@ import org.koin.core.annotation.Single
 @Single
 class XatuAcademicRepository(
     private val service: XatuAcademicService,
+    private val crypto: SecureCrypto,
     @Named("FilesDir") private val filesDir: Path,
     private val fileSystem: FileSystem
 ) {
@@ -77,7 +79,15 @@ class XatuAcademicRepository(
         if (loaded) return
         withContext(Dispatchers.IO) {
             if (fileSystem.exists(cachePath)) {
-                val value = fileSystem.source(cachePath).buffer().use { json.decodeFromString<XatuAcademicCacheFile>(it.readUtf8()) }
+                val raw = fileSystem.source(cachePath).buffer().use { it.readUtf8() }
+                val value = runCatching {
+                    val encrypted = json.decodeFromString<EncryptedAcademicCache>(raw)
+                    val decrypted = crypto.decrypt(encrypted.encryptedData, encrypted.iv)
+                        ?: error("学术缓存解密失败")
+                    json.decodeFromString<XatuAcademicCacheFile>(decrypted)
+                }.getOrElse {
+                    json.decodeFromString<XatuAcademicCacheFile>(raw)
+                }
                 semesters = value.semesters
                 snapshots.clear()
                 value.snapshots.forEach { snapshots["${it.account}|${it.semesterId}"] = it }
@@ -89,6 +99,12 @@ class XatuAcademicRepository(
     private suspend fun save() = withContext(Dispatchers.IO) {
         fileSystem.createDirectories(cachePath.parent!!)
         val value = XatuAcademicCacheFile(semesters, snapshots.values.toList())
-        fileSystem.sink(cachePath).buffer().use { it.writeUtf8(json.encodeToString(value)) }
+        val encrypted = crypto.encrypt(json.encodeToString(value)) ?: error("学术缓存加密失败")
+        fileSystem.sink(cachePath).buffer().use {
+            it.writeUtf8(json.encodeToString(EncryptedAcademicCache(encrypted.encryptedData, encrypted.iv)))
+        }
     }
 }
+
+@kotlinx.serialization.Serializable
+private data class EncryptedAcademicCache(val encryptedData: String, val iv: String)
