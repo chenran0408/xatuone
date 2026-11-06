@@ -13,8 +13,8 @@ class XatuSessionExpired : IllegalStateException("教务登录已失效，请重
 
 @Single
 class XatuAcademicService(
-    private val cookieManager: CookieManager = CookieManager.getInstance(),
-    private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(true).build()
+    private val cookieManager: CookieManager,
+    private val client: OkHttpClient
 ) {
     private val base = "http://jwgl2018.xatu.edu.cn/eams/"
 

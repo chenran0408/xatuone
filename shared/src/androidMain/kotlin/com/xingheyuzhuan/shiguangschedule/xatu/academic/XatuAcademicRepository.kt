@@ -14,7 +14,7 @@ import org.koin.core.annotation.Single
 
 @Single
 class XatuAcademicRepository(
-    private val service: XatuAcademicService = XatuAcademicService(),
+    private val service: XatuAcademicService,
     @Named("FilesDir") private val filesDir: Path,
     private val fileSystem: FileSystem
 ) {

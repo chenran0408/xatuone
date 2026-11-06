@@ -12,9 +12,11 @@ import org.jsoup.Jsoup
 import org.koin.mp.KoinPlatform
 import java.io.File
 import java.time.LocalDate
+import org.koin.core.annotation.Single
 
+@Single
 class XatuCalendarService(
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient
 ) {
     suspend fun latest(): XatuCalendar = withContext(Dispatchers.IO) {
         val index = get(INDEX, INDEX)

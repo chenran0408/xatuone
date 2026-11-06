@@ -26,7 +26,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "xatuone"
+rootProject.name = "shiguangschedule"
 
 include(":androidApp")
 include(":shared")

@@ -19,7 +19,7 @@ XATU Android
 
 ## 数据流约定
 
-页面触发事件，repository 负责缓存和刷新，service 负责网络请求与解析。页面不直接创建网络客户端，也不把服务端响应对象当作 UI 状态长期保存。
+页面触发事件，repository 负责缓存和刷新，service 负责网络请求与解析。页面不直接创建网络客户端；XATU 的 CookieManager 和 OkHttpClient 由 Android DI 容器统一提供，也不把服务端响应对象当作 UI 状态长期保存。
 
 账号切换时必须同时处理对应的校园快照、学术缓存和 WebView 会话。WebView 页面切换保留会话，显式退出登录才清理 Cookie。
 

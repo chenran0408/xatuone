@@ -20,8 +20,7 @@
 
 ### 中风险
 
-- XATU 页面在多个 `LaunchedEffect` 中直接发起请求，状态模型分散。
-- XATU service 默认创建 OkHttpClient，部分文件通过 Koin 全局容器取 Context，测试替换困难。
+- XATU 页面请求状态仍分散在多个 `LaunchedEffect` 中，后续需要在不改变接口的前提下收敛状态模型。
 - 教务地址使用 HTTP，网络安全配置全局允许明文流量，需要确认学校服务是否支持 HTTPS 后再收紧范围。
 - CI 只由 `workflow_dispatch` 触发，没有常规 PR/push 质量门禁。
 - README 尚未描述一校通模块、WebView 会话和新增服务流程。
@@ -51,3 +50,4 @@
 - 学术缓存仍为 App 私有目录中的明文 JSON，后续再评估 Keystore 加密和迁移策略。
 - 通用课程导入 Bridge 仍需结合适配脚本来源建立兼容的来源校验方案。
 - XATU 页面请求状态仍有多个 `LaunchedEffect`，后续可在不改变接口的前提下收敛到 ViewModel 状态模型。
+- XATU 的 CookieManager、OkHttpClient 和校历服务已改为由 Koin 统一提供，页面不再自行创建网络服务实例。

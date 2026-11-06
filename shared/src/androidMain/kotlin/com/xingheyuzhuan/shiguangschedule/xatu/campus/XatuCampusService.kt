@@ -18,8 +18,8 @@ import org.koin.core.annotation.Single
 
 @Single
 class XatuCampusService(
-    private val cookieManager: CookieManager = CookieManager.getInstance(),
-    private val client: OkHttpClient = OkHttpClient()
+    private val cookieManager: CookieManager,
+    private val client: OkHttpClient
 ) {
     private val payBase = "https://jfpay.xatu.edu.cn/"
 

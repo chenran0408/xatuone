@@ -69,7 +69,7 @@ actual fun XatuServicePage(
     val campus: XatuCampusRepository = koinInject()
     val snapshot by campus.snapshot.collectAsState(initial = XatuCampusSnapshot())
     val campusService: XatuCampusService = koinInject()
-    val calendarService = remember { XatuCalendarService() }
+    val calendarService: XatuCalendarService = koinInject()
     var grades by remember(page) { mutableStateOf<XatuGradePage?>(null) }
     var exams by remember(page) { mutableStateOf<List<XatuExam>?>(null) }
     var plan by remember(page) { mutableStateOf<XatuStudyPlan?>(null) }
