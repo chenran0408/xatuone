@@ -45,4 +45,38 @@ class XatuCoreTest {
         assertEquals("2026-2027学年秋季学期", semesters.first().name)
         assertEquals("2026-09-01", semesters.first().startDate)
     }
+
+    @Test
+    fun gradeParserKeepsCourseIdentityAndSummary() {
+        val html = """
+            <div>课程门数：1 总学分：3 平均绩点：3.5</div>
+            <table><tr><th>学年学期</th><th>课程序号</th><th>课程名称</th><th>学分</th><th>成绩</th><th>绩点</th></tr>
+            <tr><td>2026-2027秋季</td><td>230056.04</td><td>大学英语Ⅲ</td><td>3</td><td>92</td><td>3.5</td></tr></table>
+        """.trimIndent()
+
+        val page = XatuAcademicParser.grades(html)
+
+        assertEquals(1, page.grades.size)
+        assertEquals("230056.04", page.grades.single().code)
+        assertEquals("大学英语Ⅲ", page.grades.single().course)
+        assertEquals(1, page.summary.count)
+        assertEquals(3.0, page.summary.credits)
+        assertEquals(3.5, page.summary.gpa)
+    }
+
+    @Test
+    fun examParserCombinesDateAndTimeAndBuildsStableId() {
+        val html = """
+            <table><tr><th>课程名称</th><th>日期</th><th>时间</th><th>考场</th><th>座位号</th></tr>
+            <tr><td>高等数学</td><td>2027-01-08</td><td>09:00-11:00</td><td>教1-101</td><td>12</td></tr></table>
+        """.trimIndent()
+
+        val exam = XatuAcademicParser.exams(html).single()
+
+        assertEquals("高等数学", exam.course)
+        assertEquals("2027-01-08 09:00-11:00", exam.time)
+        assertEquals("教1-101", exam.room)
+        assertEquals("12", exam.seat)
+        assertEquals("|高等数学||2027-01-08 09:00-11:00|教1-101", exam.id)
+    }
 }

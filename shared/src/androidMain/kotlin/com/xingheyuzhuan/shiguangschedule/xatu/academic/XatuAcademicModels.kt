@@ -120,7 +120,7 @@ object XatuAcademicParser {
         } ?: return emptyList()
         fun col(vararg words: String) = table.header.indexOfFirst { words.any { word -> word in it } }
         val courseCol = col("课程名称", "科目")
-        val timeCol = col("考试时间", "时间", "日期")
+        val timeCol = col("考试时间", "时间")
         val dateCol = col("日期")
         return table.rows.mapNotNull { row ->
             fun at(index: Int) = row.getOrNull(index).orEmpty()
