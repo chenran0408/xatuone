@@ -8,10 +8,14 @@ import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseTableConfig
 import com.xingheyuzhuan.shiguangschedule.data.model.AppSettingsModel
 import com.xingheyuzhuan.shiguangschedule.data.model.AppThemeMode
 import com.xingheyuzhuan.shiguangschedule.data.model.StartScreen
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.data.repository.AppSettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -39,6 +43,10 @@ data class SettingsUiState(
 class SettingsViewModel(
     private val appSettingsRepository: AppSettingsRepository
 ) : ViewModel() {
+    private val _styleSaveStatus = MutableStateFlow("")
+    val styleSaveStatus = _styleSaveStatus.asStateFlow()
+    private val _semesterDateSaving = MutableStateFlow(false)
+    val semesterDateSaving = _semesterDateSaving.asStateFlow()
 
     // 1. 基础配置流 (DataStore)
     private val appSettingsFlow = appSettingsRepository.getAppSettings()
@@ -111,16 +119,28 @@ class SettingsViewModel(
     /**
      * 更新起始日期
      */
-    fun onSemesterStartDateSelected(selectedDateMillis: Long?) {
+    fun onSemesterStartDateSelected(selectedDateMillis: Long, onResult: (String?) -> Unit) {
+        if (_semesterDateSaving.value) return
         viewModelScope.launch {
-            val dateMillis = selectedDateMillis ?: return@launch
-            uiState.value.courseConfig?.let { currentConfig ->
-                val selectedDate = Instant.fromEpochMilliseconds(dateMillis)
-                    .toLocalDateTime(TimeZone.currentSystemDefault()).date
-                val newConfig = currentConfig.copy(
-                    semesterStartDate = selectedDate.toString()
+            val currentConfig = uiState.value.courseConfig
+            if (currentConfig == null) {
+                onResult("当前课表尚未加载，日期未保存")
+                return@launch
+            }
+            _semesterDateSaving.value = true
+            try {
+                val selectedDate = Instant.fromEpochMilliseconds(selectedDateMillis)
+                    .toLocalDateTime(TimeZone.UTC).date
+                appSettingsRepository.insertOrUpdateCourseConfig(
+                    currentConfig.copy(semesterStartDate = selectedDate.toString())
                 )
-                appSettingsRepository.insertOrUpdateCourseConfig(newConfig)
+                onResult(null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onResult("日期保存失败：${error.message ?: "请重试"}")
+            } finally {
+                _semesterDateSaving.value = false
             }
         }
     }
@@ -175,6 +195,20 @@ class SettingsViewModel(
             val currentSettings = uiState.value.appSettings
             val updatedSettings = currentSettings.copy(themeMode = newMode)
             appSettingsRepository.insertOrUpdateAppSettings(updatedSettings)
+        }
+    }
+
+    fun onUiStyleChanged(newStyle: UiStyle) {
+        viewModelScope.launch {
+            _styleSaveStatus.value = "正在保存界面风格…"
+            try {
+                appSettingsRepository.updateUiStyle(newStyle)
+                _styleSaveStatus.value = "已保存"
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _styleSaveStatus.value = "界面风格保存失败：${error.message}"
+            }
         }
     }
 

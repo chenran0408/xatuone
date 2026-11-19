@@ -15,6 +15,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -65,7 +66,18 @@ import com.xingheyuzhuan.shiguangschedule.data.model.schedule_style.BorderTypePr
 import com.xingheyuzhuan.shiguangschedule.data.model.schedule_style.ScheduleModeProto
 import com.xingheyuzhuan.shiguangschedule.ui.components.AdvancedColorPicker
 import com.xingheyuzhuan.shiguangschedule.ui.components.ColorPickerConfig
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiListDivider
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSettingRow
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSwitch
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.ui.components.SliderWithInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.ScheduleGrid
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.ScheduleGridActions
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.ScheduleGridStyleComposed
@@ -90,6 +102,7 @@ import shiguangschedule.shared.generated.resources.action_reset_style
 import shiguangschedule.shared.generated.resources.border_type_dashed
 import shiguangschedule.shared.generated.resources.border_type_solid
 import shiguangschedule.shared.generated.resources.check_24px
+import shiguangschedule.shared.generated.resources.chevron_right_24px
 import shiguangschedule.shared.generated.resources.desc_wallpaper_set
 import shiguangschedule.shared.generated.resources.desc_wallpaper_unset
 import shiguangschedule.shared.generated.resources.dialog_reset_message
@@ -146,29 +159,16 @@ fun SettingsListContent(
     var showResetDialog by remember { mutableStateOf(false) }
 
     if (showResetDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text(stringResource(Res.string.dialog_reset_title)) },
-            text = { Text(stringResource(Res.string.dialog_reset_message)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.resetStyleSettings()
-                        showResetDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    Text(stringResource(Res.string.action_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+        val dismiss = { showResetDialog = false }
+        UiDialog(
+            onDismissRequest = dismiss,
+            title = stringResource(Res.string.dialog_reset_title),
+            text = { UiText(stringResource(Res.string.dialog_reset_message)) },
+            confirmButton = UiDialogAction(stringResource(Res.string.action_confirm), {
+                viewModel.resetStyleSettings()
+                dismiss()
+            }),
+            dismissButton = UiDialogAction(stringResource(Res.string.action_cancel), dismiss),
         )
     }
 
@@ -176,43 +176,36 @@ fun SettingsListContent(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        OutlinedButton(
+        UiSettingRow(
+            title = stringResource(Res.string.action_reset_style),
             onClick = { showResetDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
-        ) {
-            Text(stringResource(Res.string.action_reset_style))
-        }
+        )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        UiListDivider()
 
         // 其他样式分类
-        Text(
+        UiText(
             text = stringResource(Res.string.style_category_other),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary
         )
 
         // 小组件样式设置跳转入口
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { onNavigate(Destination.WidgetStyleSettings) }
-                .padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = stringResource(Res.string.title_widget_style),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        UiSettingRow(
+            title = stringResource(Res.string.title_widget_style),
+            onClick = { onNavigate(Destination.WidgetStyleSettings) },
+            trailingContent = {
+                Icon(
+                    vectorResource(Res.drawable.chevron_right_24px),
+                    contentDescription = null,
+                    tint = uiStyleColors().secondaryText,
+                )
+            },
+        )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        UiListDivider()
 
-        Text(stringResource(Res.string.style_category_interface), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        UiText(stringResource(Res.string.style_category_interface), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         WallpaperItem(
             wallpaperPath = wallpaperPath,
             onClick = onWallpaperClick,
@@ -239,16 +232,16 @@ fun SettingsListContent(
             onReset = { viewModel.updatePageTextColor(null) }
         )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        UiListDivider()
 
-        Text(stringResource(Res.string.style_category_grid_size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        UiText(stringResource(Res.string.style_category_grid_size), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         SliderWithInputField(stringResource(Res.string.label_section_height), currentStyle.sectionHeight.value, 40f..120f) { viewModel.updateSectionHeight(it) }
         SliderWithInputField(stringResource(Res.string.label_time_column_width), currentStyle.timeColumnWidth.value, 20f..80f) { viewModel.updateTimeColumnWidth(it) }
         SliderWithInputField(stringResource(Res.string.label_day_header_height), currentStyle.dayHeaderHeight.value, 30f..80f) { viewModel.updateDayHeaderHeight(it) }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        UiListDivider()
 
-        Text(stringResource(Res.string.style_category_course_block), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        UiText(stringResource(Res.string.style_category_course_block), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         ColorPickerItem(
             label = stringResource(Res.string.label_course_text_color),
             currentColor = currentStyle.courseTextColor,
@@ -257,6 +250,7 @@ fun SettingsListContent(
         )
         StyleSwitchItem(stringResource(Res.string.label_show_start_time), currentStyle.showStartTime) { viewModel.updateShowStartTime(it) }
         StyleSwitchItem(stringResource(Res.string.label_hide_location), currentStyle.hideLocation) { viewModel.updateHideLocation(it) }
+        StyleSwitchItem("隐藏课程序号（日／周视图）", currentStyle.hideCourseNumber) { viewModel.updateHideCourseNumber(it) }
         StyleSwitchItem(stringResource(Res.string.label_hide_teacher), currentStyle.hideTeacher) { viewModel.updateHideTeacher(it) }
         StyleSwitchItem(stringResource(Res.string.label_remove_location_at), currentStyle.removeLocationAt) { viewModel.updateRemoveLocationAt(it) }
         StyleSwitchItem(stringResource(Res.string.label_text_align_center_h), currentStyle.textAlignCenterHorizontal) { viewModel.updateTextAlignCenterHorizontal(it) }
@@ -269,9 +263,9 @@ fun SettingsListContent(
         SliderWithInputField(stringResource(Res.string.label_outer_padding), currentStyle.courseBlockOuterPadding.value, 0f..8f, 1f) { viewModel.updateOuterPadding(it) }
         SliderWithInputField(stringResource(Res.string.label_opacity), currentStyle.courseBlockAlpha, 0.1f..1f, 0.05f) { viewModel.updateAlpha(it) }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        UiListDivider()
 
-        Text(stringResource(Res.string.style_category_color_scheme), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        UiText(stringResource(Res.string.style_category_color_scheme), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
 
         ColorSchemeSection(
             title = stringResource(Res.string.title_light_color_pool),
@@ -303,7 +297,39 @@ fun BorderTypeSelector(
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(Res.string.label_border_type), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+        UiText(stringResource(Res.string.label_border_type), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 8.dp))
+        if (LocalUiStyle.current == UiStyle.MIUIX) {
+            val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+            top.yukonga.miuix.kmp.basic.TabRowWithContour(
+                tabs = types.map { it.second },
+                selectedTabIndex = types.indexOfFirst { it.first == currentType },
+                onTabSelected = { onTypeChange(types[it].first) },
+                minWidth = 72.dp,
+                maxWidth = 220.dp,
+                colors = top.yukonga.miuix.kmp.basic.TabRowDefaults.tabRowColors(
+                    selectedBackgroundColor = colors.primaryContainer,
+                    selectedContentColor = colors.onPrimaryContainer,
+                ),
+            )
+            return@Column
+        }
+        if (LocalUiStyle.current == UiStyle.COUI) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                types.forEach { (type, label) ->
+                    UiButton(
+                        text = label,
+                        selected = currentType == type,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onTypeChange(type) },
+                    )
+                }
+            }
+            return@Column
+        }
         Row(
             modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             verticalAlignment = Alignment.CenterVertically
@@ -338,30 +364,67 @@ fun ColorSchemeSection(
 ) {
     val contentColor = if (isDarkSection) Color.White else Color.Black
 
-    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(bgColor).padding(16.dp)) {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = contentColor)
+    val colorContent: @Composable ColumnScope.() -> Unit = {
+        if (LocalUiStyle.current == UiStyle.COUI) {
+            com.itos.coui.text.Text(
+                text = title,
+                kind = com.itos.coui.text.CouiTextKind.PreferenceTitle,
+                color = contentColor,
+            )
+        } else {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = contentColor)
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             colors.forEachIndexed { index, color ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(color).clickable { onEditColor(index) })
-                    Text("${index + 1}", style = MaterialTheme.typography.labelSmall, color = contentColor.copy(0.6f), modifier = Modifier.padding(top = 4.dp))
+                    if (LocalUiStyle.current == UiStyle.COUI) {
+                        com.itos.coui.text.Text(
+                            text = "${index + 1}",
+                            kind = com.itos.coui.text.CouiTextKind.PreferenceSummary,
+                            color = contentColor.copy(0.6f),
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    } else {
+                        Text("${index + 1}", style = MaterialTheme.typography.labelSmall, color = contentColor.copy(0.6f), modifier = Modifier.padding(top = 4.dp))
+                    }
                 }
             }
         }
+    }
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        com.itos.coui.layout.Group(
+            modifier = Modifier.fillMaxWidth(),
+            colors = com.itos.coui.layout.CouiPageDefaults.themeColors().copy(card = bgColor, title = contentColor, summary = contentColor),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), content = colorContent)
+        }
+    } else {
+        Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(bgColor).padding(16.dp), content = colorContent)
     }
 }
 
 @Composable
 fun ColorPreviewBox(color: Color, isLightModeUI: Boolean) {
     Box(modifier = Modifier.fillMaxWidth().height(100.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(16.dp)).background(color), contentAlignment = Alignment.Center) {
-        Text(
-            text = if (isLightModeUI) stringResource(Res.string.preview_light_mode) else stringResource(Res.string.preview_dark_mode),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = if (isLightModeUI) lightColorScheme().onSurface else Color.White
-        )
+        val label = if (isLightModeUI) stringResource(Res.string.preview_light_mode) else stringResource(Res.string.preview_dark_mode)
+        if (LocalUiStyle.current == UiStyle.COUI) {
+            com.itos.coui.text.Text(
+                text = label,
+                textAlign = TextAlign.Center,
+                kind = com.itos.coui.text.CouiTextKind.SectionTitle,
+                color = if (isLightModeUI) Color.Black else Color.White,
+            )
+        } else {
+            Text(
+                text = label,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (isLightModeUI) lightColorScheme().onSurface else Color.White
+            )
+        }
     }
 }
 
@@ -468,6 +531,22 @@ fun StyleSwitchItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    if (LocalUiStyle.current == UiStyle.MIUIX) {
+        UiSettingRow(
+            title = label,
+            onClick = { onCheckedChange(!checked) },
+            trailingContent = { UiSwitch(checked = checked, onCheckedChange = onCheckedChange) },
+        )
+        return
+    }
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        UiSettingRow(
+            title = label,
+            onClick = { onCheckedChange(!checked) },
+            trailingContent = { UiSwitch(checked = checked, onCheckedChange = onCheckedChange) },
+        )
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -496,6 +575,46 @@ fun WallpaperItem(
     onLongClick: () -> Unit
 ) {
     val hasWallpaper = !wallpaperPath.isNullOrEmpty()
+
+    if (LocalUiStyle.current == UiStyle.MIUIX) {
+        top.yukonga.miuix.kmp.basic.BasicComponent(
+            title = stringResource(Res.string.label_wallpaper),
+            summary = stringResource(if (hasWallpaper) Res.string.desc_wallpaper_set else Res.string.desc_wallpaper_unset),
+            startAction = {
+                Icon(vectorResource(Res.drawable.image_24px), null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary)
+            },
+            onClick = onClick,
+            onClickLabel = stringResource(Res.string.label_wallpaper),
+            endActions = {
+                if (hasWallpaper) {
+                    top.yukonga.miuix.kmp.basic.TextButton(
+                        text = stringResource(Res.string.action_reset),
+                        onClick = onLongClick,
+                    )
+                }
+            },
+        )
+        return
+    }
+
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        UiSettingRow(
+            title = stringResource(Res.string.label_wallpaper),
+            summary = stringResource(if (hasWallpaper) Res.string.desc_wallpaper_set else Res.string.desc_wallpaper_unset),
+            onClick = onClick,
+            leadingContent = {
+                Icon(
+                    vectorResource(Res.drawable.image_24px),
+                    contentDescription = null,
+                    tint = com.itos.coui.layout.CouiPageDefaults.themeColors().accent,
+                )
+            },
+            trailingContent = if (hasWallpaper) {
+                { UiButton(text = stringResource(Res.string.action_reset), selected = false, onClick = onLongClick) }
+            } else null,
+        )
+        return
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
@@ -529,8 +648,93 @@ fun ColorPickerItem(
     onColorChanged: (Color) -> Unit,
     onReset: () -> Unit
 ) {
+    val materialPrimary = MaterialTheme.colorScheme.primary
     var showSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
+    var pickerColor by remember(currentColor, materialPrimary) {
+        mutableStateOf(currentColor ?: materialPrimary)
+    }
+
+    if (LocalUiStyle.current == UiStyle.MIUIX) {
+        val miuixPrimary = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary
+        top.yukonga.miuix.kmp.basic.BasicComponent(
+            title = label,
+            summary = if (currentColor == null) stringResource(Res.string.status_not_set) else null,
+            endActions = {
+                if (currentColor != null) {
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(currentColor))
+                }
+            },
+            onClick = {
+                pickerColor = currentColor ?: miuixPrimary
+                showSheet = true
+            },
+            onClickLabel = label,
+        )
+        if (showSheet) {
+            UiSheet(onDismissRequest = { showSheet = false }, skipPartiallyExpanded = true) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        UiText(label, style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title4)
+                        top.yukonga.miuix.kmp.basic.TextButton(
+                            text = stringResource(Res.string.action_reset),
+                            onClick = { onReset(); showSheet = false },
+                        )
+                    }
+                    AdvancedColorPicker(
+                        initialColor = pickerColor,
+                        onColorChanged = { pickerColor = it; onColorChanged(it) },
+                        config = ColorPickerConfig(showAlpha = false, showInputMode = true),
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        val colors = com.itos.coui.layout.CouiPageDefaults.themeColors()
+        UiSettingRow(
+            title = label,
+            summary = if (currentColor == null) stringResource(Res.string.status_not_set) else "",
+            onClick = {
+                pickerColor = currentColor ?: colors.accent
+                showSheet = true
+            },
+            trailingContent = currentColor?.let { color ->
+                { Box(Modifier.size(24.dp).clip(CircleShape).background(color)) }
+            },
+        )
+        if (showSheet) {
+            UiSheet(onDismissRequest = { showSheet = false }, skipPartiallyExpanded = true) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        com.itos.coui.text.Text(text = label, kind = com.itos.coui.text.CouiTextKind.SectionTitle)
+                        UiButton(
+                            text = stringResource(Res.string.action_reset),
+                            selected = false,
+                            onClick = { onReset(); showSheet = false },
+                        )
+                    }
+                    AdvancedColorPicker(
+                        initialColor = pickerColor,
+                        onColorChanged = { pickerColor = it; onColorChanged(it) },
+                        config = ColorPickerConfig(showAlpha = false, showInputMode = true),
+                    )
+                }
+            }
+        }
+        return
+    }
 
     Row(
         modifier = Modifier
@@ -561,6 +765,7 @@ fun ColorPickerItem(
     }
 
     if (showSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
             sheetState = sheetState,

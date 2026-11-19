@@ -8,6 +8,7 @@ import org.jetbrains.compose.resources.getString
 import org.koin.core.context.GlobalContext
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.action_share
+import shiguangschedule.shared.generated.resources.app_name
 
 actual fun platformShareFile(filePath: String, mimeType: String) {
     val context = GlobalContext.get().get<android.content.Context>()
@@ -29,7 +30,9 @@ actual fun platformShareFile(filePath: String, mimeType: String) {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
-    val chooserTitle = runBlocking { getString(Res.string.action_share) }
+    val chooserTitle = runBlocking {
+        "${getString(Res.string.app_name)} · ${getString(Res.string.action_share)}"
+    }
 
     val chooser = Intent.createChooser(shareIntent, chooserTitle).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

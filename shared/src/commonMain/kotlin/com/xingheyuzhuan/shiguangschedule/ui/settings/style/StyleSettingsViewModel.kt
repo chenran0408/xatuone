@@ -286,6 +286,8 @@ class StyleSettingsViewModel(
         styleRepository.setHideLocation(hide)
     }
 
+    fun updateHideCourseNumber(hide: Boolean) = viewModelScope.launch { styleRepository.setHideCourseNumber(hide) }
+
     /** 更新是否隐藏课程块内的授课老师 */
     fun updateHideTeacher(hide: Boolean) = viewModelScope.launch {
         styleRepository.setHideTeacher(hide)

@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,9 +14,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiFloatingScheduleActions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +32,6 @@ import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.archive_24px
 import shiguangschedule.shared.generated.resources.close_24px
-import shiguangschedule.shared.generated.resources.floating_course_hint
 
 @Composable
 fun FloatingCourseBar(
@@ -47,50 +46,23 @@ fun FloatingCourseBar(
         modifier = modifier.zIndex(10f)
     ) {
         floatingCourse?.let { cw ->
-            Row(
-                modifier = Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = CircleShape
-                    )
-                    .padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            UiFloatingScheduleActions(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), onCancelClick) { cancel ->
                 Icon(
-                    imageVector = vectorResource(Res.drawable.archive_24px),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(20.dp)
+                    imageVector = vectorResource(Res.drawable.archive_24px), contentDescription = null,
+                    tint = uiStyleColors().accent, modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.widthIn(max = 180.dp)) {
-                    Text(
-                        text = cw.course.name,
+                    UiText(text = cw.course.name,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = stringResource(Res.string.floating_course_hint),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
+                        color = uiStyleColors().onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = onCancelClick,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f),
-                            shape = CircleShape
-                        )
-                ) {
+                androidx.compose.material3.IconButton(onClick = cancel, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = vectorResource(Res.drawable.close_24px),
                         contentDescription = stringResource(Res.string.action_cancel),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = uiStyleColors().onSurface,
                         modifier = Modifier.size(16.dp)
                     )
                 }

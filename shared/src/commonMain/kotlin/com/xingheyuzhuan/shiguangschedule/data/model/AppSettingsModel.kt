@@ -14,6 +14,7 @@ import org.jetbrains.compose.resources.StringResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.nav_course_schedule
 import shiguangschedule.shared.generated.resources.nav_today_schedule
+import shiguangschedule.shared.generated.resources.nav_xatu_home
 import shiguangschedule.shared.generated.resources.theme_dark
 import shiguangschedule.shared.generated.resources.theme_follow_system
 import shiguangschedule.shared.generated.resources.theme_light
@@ -68,6 +69,7 @@ enum class AutoControlMode(val value: String) {
  * 可选的启动页面枚举
  */
 enum class StartScreen(val value: String, val labelRes: StringResource) {
+    CAMPUS_HOME("CAMPUS_HOME", Res.string.nav_xatu_home),
     /** 周课表 */
     COURSE_SCHEDULE("COURSE_SCHEDULE", Res.string.nav_course_schedule),
 
@@ -76,7 +78,7 @@ enum class StartScreen(val value: String, val labelRes: StringResource) {
 
     companion object {
         fun fromString(value: String?): StartScreen {
-            return entries.find { it.value == value } ?: COURSE_SCHEDULE
+            return entries.find { it.value == value } ?: CAMPUS_HOME
         }
     }
 }
@@ -98,6 +100,16 @@ enum class AppThemeMode(val value: String, val labelRes: StringResource) {
         fun fromString(value: String?): AppThemeMode? {
             return entries.find { it.value == value }
         }
+    }
+}
+
+enum class UiStyle(val value: String, val label: String) {
+    MATERIAL("MATERIAL", "Material 3"),
+    MIUIX("MIUIX", "MIUIX"),
+    COUI("COUI", "COUI");
+
+    companion object {
+        fun fromString(value: String?): UiStyle = entries.find { it.value == value } ?: MATERIAL
     }
 }
 
@@ -135,10 +147,12 @@ data class AppSettingsModel(
     val showNonCurrentWeekCourses: Boolean = false,
 
     /** 应用启动时显示的页面 */
-    val startScreen: StartScreen = StartScreen.COURSE_SCHEDULE,
+    val startScreen: StartScreen = StartScreen.CAMPUS_HOME,
 
     /** 应用主题模式 */
     val themeMode: AppThemeMode = AppThemeMode.FOLLOW_SYSTEM,
+
+    val uiStyle: UiStyle = UiStyle.MATERIAL,
 
     /** 是否开启动态取色 (Material You) */
     val useDynamicColor: Boolean = true,
@@ -184,6 +198,7 @@ data class AppSettingsModel(
         val KEY_START_SCREEN = stringPreferencesKey("start_screen")
         /** 应用主题模式的存储键 */
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_UI_STYLE = stringPreferencesKey("ui_style")
         /** 是否开启动态取色 (Material You) 的存储键 */
         val KEY_USE_DYNAMIC_COLOR = booleanPreferencesKey("use_dynamic_color")
         /** 自定义主题浅色主色的存储键 */
@@ -235,6 +250,7 @@ data class AppSettingsModel(
                 showNonCurrentWeekCourses = prefs[KEY_SHOW_NON_CURRENT_WEEK_COURSES] ?: d.showNonCurrentWeekCourses,
                 startScreen = prefs[KEY_START_SCREEN]?.let { StartScreen.fromString(it) } ?: d.startScreen,
                 themeMode = prefs[KEY_THEME_MODE]?.let { AppThemeMode.fromString(it) } ?: d.themeMode,
+                uiStyle = UiStyle.fromString(prefs[KEY_UI_STYLE]),
                 useDynamicColor = prefs[KEY_USE_DYNAMIC_COLOR] ?: d.useDynamicColor,
                 customPrimaryColor = LightDarkValue(
                     light = prefs[KEY_CUSTOM_LIGHT_PRIMARY] ?: d.customPrimaryColor.light,

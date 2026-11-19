@@ -1,5 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.contribution
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,10 +73,9 @@ fun ContributionScreen(
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val uriHandler = LocalUriHandler.current
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.title_contribution_list)) },
+            UiTopAppBar(title = stringResource(Res.string.title_contribution_list),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -81,8 +83,7 @@ fun ContributionScreen(
                             contentDescription = stringResource(Res.string.a11y_back_to_previous)
                         )
                     }
-                }
-            )
+                })
         }
     ) { paddingValues ->
         Column(

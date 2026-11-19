@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#155E63</color>
+    <color name="splash_background">#F4F8F7</color>
+    <item name="ic_notification" type="drawable">@drawable/ic_brand_mark</item>
+</resources>

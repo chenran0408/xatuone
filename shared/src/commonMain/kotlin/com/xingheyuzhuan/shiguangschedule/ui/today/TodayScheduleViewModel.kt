@@ -15,6 +15,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -53,20 +57,25 @@ class TodayScheduleViewModel(
         }
     }.distinctUntilChanged()
 
+    private val selectedDate = MutableStateFlow<LocalDate?>(null)
+    fun selectDate(date: LocalDate?) { selectedDate.value = date }
+
+    private val refresh = MutableStateFlow(0)
+    fun retry() { refresh.update { it + 1 } }
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<TodayUiState> = combine(
+    val uiState: StateFlow<TodayUiState> = refresh.flatMapLatest { combine(
         appSettingsRepository.getAppSettings(),
-        currentDate
+        combine(currentDate, selectedDate) { today, selected -> selected ?: today }
     ) { settings, today -> settings to today }
         .flatMapLatest { (settings, today) ->
             val tableId = settings.currentCourseTableId
             val dayOfWeek = today.dayOfWeek.isoDayNumber
 
             combine(
-                appSettingsRepository.calculateCurrentWeekFromDb(),
                 appSettingsRepository.getCourseTableConfigFlow(tableId),
                 timeScheduleRepository.observeEffectiveTimeSlots(tableId, today)
-            ) { weekIndex: Int?, config: CourseTableConfig?, timeSlots: List<TimeSlot> ->
+            ) { config: CourseTableConfig?, timeSlots: List<TimeSlot> ->
 
                 val startDate = config?.semesterStartDate?.let {
                     try { LocalDate.parse(it) } catch (e: Exception) { null }
@@ -75,17 +84,15 @@ class TodayScheduleViewModel(
                 val totalWeeks = config?.semesterTotalWeeks ?: DEFAULT_SEMESTER_TOTAL_WEEKS
                 val firstDayOfWeek = config?.firstDayOfWeek ?: DayOfWeek.MONDAY.isoDayNumber
 
-                // 判定今天是否处于生效的假期中
+                val weekIndex = appSettingsRepository.getWeekIndexAtDate(today, config?.semesterStartDate, firstDayOfWeek)
+                    ?.takeIf { it in 1..totalWeeks }
+
+                // 判定所选日期是否处于生效的假期中
                 val isSkippedDay = settings.holidays.any { holiday ->
                     holiday.isHoliday && holiday.dates.contains(today)
                 }
 
-                val status = when {
-                    config?.semesterStartDate == null -> TodayStatus.NoSemesterConfig
-                    startDate != null && today < startDate -> TodayStatus.Vacation
-                    weekIndex == null -> TodayStatus.SemesterEnded
-                    else -> TodayStatus.Normal
-                }
+                val status = courseDayStatus(today, startDate, weekIndex)
 
                 // 记录状态与精准计算所需的物理配置
                 DataSnapshot(
@@ -108,6 +115,7 @@ class TodayScheduleViewModel(
                     flowOf(createSuccessState(emptyList(), snapshot, today))
                 }
             }
+        }.onStart { emit(TodayUiState.Loading) }.catch { emit(TodayUiState.Error("课表读取失败：${it.message}")) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState.Loading)
 
@@ -128,7 +136,7 @@ class TodayScheduleViewModel(
         courses: List<CourseWithWeeks>,
         snapshot: DataSnapshot,
         today: LocalDate
-    ): TodayUiState.Success {
+    ): TodayUiState {
         val slotMap = snapshot.timeSlots.associateBy { it.number }
 
         val displayModels = courses.map { item ->
@@ -137,7 +145,8 @@ class TodayScheduleViewModel(
             CourseDisplayModel(
                 course = item.course,
                 startTime = item.course.customStartTime ?: startSlot?.startTime,
-                endTime = item.course.customEndTime ?: endSlot?.endTime
+                endTime = item.course.customEndTime ?: endSlot?.endTime,
+                weeks = item.weeks.map { it.weekNumber }
             )
         }.sortedWith(
             compareBy<CourseDisplayModel> { it.startTime ?: MAX_TIME_SORT_KEY }
@@ -159,13 +168,15 @@ class TodayScheduleViewModel(
 data class CourseDisplayModel(
     val course: Course,
     val startTime: String?,
-    val endTime: String?
+    val endTime: String?,
+    val weeks: List<Int> = emptyList()
 )
 
 enum class TodayStatus { Normal, NoSemesterConfig, SemesterEnded, Vacation }
 
 sealed class TodayUiState {
     data object Loading : TodayUiState()
+    data class Error(val message: String) : TodayUiState()
     data class Success(
         val courses: List<CourseDisplayModel>,
         val weekIndex: Int,
@@ -175,4 +186,11 @@ sealed class TodayUiState {
         val totalWeeks: Int,
         val firstDayOfWeek: Int
     ) : TodayUiState()
+}
+
+internal fun courseDayStatus(date: LocalDate, start: LocalDate?, week: Int?): TodayStatus = when {
+    start == null -> TodayStatus.NoSemesterConfig
+    date < start -> TodayStatus.Vacation
+    week == null -> TodayStatus.SemesterEnded
+    else -> TodayStatus.Normal
 }

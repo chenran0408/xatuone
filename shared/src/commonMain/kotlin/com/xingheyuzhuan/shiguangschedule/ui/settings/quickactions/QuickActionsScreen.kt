@@ -1,5 +1,13 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.quickactions
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiListDivider
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiServiceRow
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,11 +24,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,15 +35,11 @@ import com.xingheyuzhuan.shiguangschedule.Destination
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.Res
-import shiguangschedule.shared.generated.resources.a11y_back
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.chevron_right_24px
-import shiguangschedule.shared.generated.resources.desc_schedule_tweak
 import shiguangschedule.shared.generated.resources.item_quick_actions
 import shiguangschedule.shared.generated.resources.item_quick_delete
 import shiguangschedule.shared.generated.resources.item_schedule_tweak
 import shiguangschedule.shared.generated.resources.label_quick_action_category_schedule
-import shiguangschedule.shared.generated.resources.quick_delete_subtitle
 
 /**
  * 快捷操作二级页面
@@ -50,66 +51,62 @@ fun QuickActionsScreen(
     onNavigate: (Destination) -> Unit,
     onBack: () -> Unit
 ) {
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.item_quick_actions)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = stringResource(Res.string.a11y_back)
-                        )
-                    }
-                }
-            )
+            UiTopAppBar(title = stringResource(Res.string.item_quick_actions), onBack = onBack)
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = if (LocalUiStyle.current == UiStyle.COUI) 0.dp else 16.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(16.dp))
+            if (LocalUiStyle.current != UiStyle.COUI) Spacer(Modifier.height(16.dp))
 
-            Text(
-                text = stringResource(Res.string.label_quick_action_category_schedule),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (LocalUiStyle.current != UiStyle.MATERIAL) {
+                UiCard(Modifier.fillMaxWidth()) {
+                    UiServiceRow(stringResource(Res.string.item_schedule_tweak), "", { onNavigate(Destination.TweakSchedule) })
+                    UiListDivider()
+                    UiServiceRow(stringResource(Res.string.item_quick_delete), "", { onNavigate(Destination.QuickDelete) })
+                }
+            } else {
+                Text(
+                    text = stringResource(Res.string.label_quick_action_category_schedule),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-            Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
-            // 内容卡片
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                // 内容卡片
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    // 调课功能项
-                    QuickActionItem(
-                        title = stringResource(Res.string.item_schedule_tweak),
-                        subtitle = stringResource(Res.string.desc_schedule_tweak),
-                        onClick = { onNavigate(Destination.TweakSchedule) }
-                    )
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        // 调课功能项
+                        QuickActionItem(
+                            title = stringResource(Res.string.item_schedule_tweak),
+                            onClick = { onNavigate(Destination.TweakSchedule) }
+                        )
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                    // 快速删除功能项
-                    QuickActionItem(
-                        title = stringResource(Res.string.item_quick_delete),
-                        subtitle = stringResource(Res.string.quick_delete_subtitle),
-                        onClick = { onNavigate(Destination.QuickDelete) }
-                    )
+                        // 快速删除功能项
+                        QuickActionItem(
+                            title = stringResource(Res.string.item_quick_delete),
+                            onClick = { onNavigate(Destination.QuickDelete) }
+                        )
+                    }
                 }
             }
         }
@@ -122,7 +119,6 @@ fun QuickActionsScreen(
 @Composable
 private fun QuickActionItem(
     title: String,
-    subtitle: String,
     onClick: () -> Unit
 ) {
     Row(
@@ -142,11 +138,6 @@ private fun QuickActionItem(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Icon(

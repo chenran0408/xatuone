@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.math.RoundingMode
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
@@ -21,30 +20,29 @@ class XatuCampusService(
     private val cookieManager: CookieManager,
     private val client: OkHttpClient
 ) {
+    private val payClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
     private val payBase = "https://jfpay.xatu.edu.cn/"
 
     private fun request(path: String, params: Map<String, String>? = null): JsonElement {
         val url = payBase + "api/" + path
+        val token = cookieManager.getCookie(url).orEmpty().split("; ")
+            .firstOrNull { it.startsWith("datalook_reimbursement_token=") }
+            ?.substringAfter('=')
+            .orEmpty()
+        val hasToken = token.isNotBlank()
         val builder = Request.Builder()
             .url(url)
-            .header("Cookie", cookieManager.getCookie(url).orEmpty())
-            .header("X-Token", cookieManager.getCookie(url).orEmpty().split("; ")
-                .firstOrNull { it.startsWith("datalook_reimbursement_token=") }
-                ?.substringAfter('=')
-                .orEmpty())
+            .header("X-Token", token)
             .header("Accept", "application/json")
         params?.let {
             val body = Json.encodeToString(it)
             builder.post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
         }
-        return client.newCall(builder.build()).execute().use { response ->
+        return payClient.newCall(builder.build()).execute().use { response ->
+            if (response.code == 401 || response.isRedirect) throw XatuPaySessionExpired(hasToken)
+            if (response.code == 403) error("缴费平台拒绝访问（HTTP 403）")
             if (!response.isSuccessful) error("缴费平台返回 HTTP ${response.code}")
-            val element = Json.parseToJsonElement(response.body.string())
-            val objectValue = element as? kotlinx.serialization.json.JsonObject
-            if (objectValue?.get("messageCode")?.jsonPrimitive?.content?.let { it != "0" } == true) {
-                error(objectValue["message"]?.jsonPrimitive?.content ?: "缴费平台返回失败")
-            }
-            objectValue?.get("data") ?: element
+            payResponseData(Json.parseToJsonElement(response.body.string()), hasToken)
         }
     }
 
@@ -56,7 +54,7 @@ class XatuCampusService(
     suspend fun projects(): List<XatuCampusOption> = withContext(Dispatchers.IO) {
         rows(request("pay/project/getAllProjectList"))
             .filter { it["proModelUrl"]?.jsonPrimitive?.content in listOf("electric", "electricNewCapec") }
-            .map { XatuCampusOption(it["id"]!!.jsonPrimitive.content, it["projectName"]?.jsonPrimitive?.content.orEmpty()) }
+            .map { XatuCampusOption(it["id"]!!.jsonPrimitive.content, it["projectName"]?.jsonPrimitive?.content.orEmpty().trim()) }
     }
 
     suspend fun areas(projectId: String): List<XatuCampusOption> = options(
@@ -78,19 +76,7 @@ class XatuCampusService(
         nameKey: String
     ): List<XatuCampusOption> = withContext(Dispatchers.IO) {
         rows(request("pay/web/payEleCostController/$path", params))
-            .map { XatuCampusOption(it[idKey]!!.jsonPrimitive.content, it[nameKey]!!.jsonPrimitive.content) }
-    }
-
-    suspend fun loadPage(url: String): String = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url)
-            .header("Cookie", cookieManager.getCookie(url).orEmpty())
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36")
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("校园服务返回 HTTP ${response.code}")
-            response.body.string()
-        }
+            .map { XatuCampusOption(it[idKey]!!.jsonPrimitive.content, it[nameKey]!!.jsonPrimitive.content.trim()) }
     }
 
     suspend fun electricityBalance(dorm: XatuDorm): String = withContext(Dispatchers.IO) {
@@ -99,9 +85,7 @@ class XatuCampusService(
             "areaid" to dorm.area.id,
             "buildid" to dorm.building.id,
             "roomid" to dorm.room.id
-        ))).first()
-        val used = row["oddl"]!!.jsonPrimitive.content.toBigDecimal()
-        val total = row["suml"]?.jsonPrimitive?.content?.toBigDecimalOrNull()
-        (total?.minus(used) ?: used).setScale(2, RoundingMode.HALF_UP).toPlainString()
+        ))).firstOrNull() ?: throw XatuElectricityNoData()
+        remainingElectricityInDegrees(row)
     }
 }

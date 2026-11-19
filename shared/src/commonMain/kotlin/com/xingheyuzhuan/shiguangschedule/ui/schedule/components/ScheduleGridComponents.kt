@@ -21,8 +21,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScheduleMarker
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -36,8 +41,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -47,6 +57,10 @@ import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.MergedCourseBlock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import org.jetbrains.compose.resources.stringResource
+import shiguangschedule.shared.generated.resources.Res
+import shiguangschedule.shared.generated.resources.date_format_month_day
+import shiguangschedule.shared.generated.resources.widget_title_today
 import kotlin.time.Clock
 
 /**
@@ -109,6 +123,7 @@ class ScheduleGridState(
     val gridScrollState: ScrollState
 ) {
     var expandedItem by mutableStateOf<ISingleSchedulable?>(null)
+    var pressedItem by mutableStateOf<ISingleSchedulable?>(null)
 
     var activeMoveIntent by mutableStateOf<CourseMoveIntent?>(null)
     var bodyDragOffsetX by mutableStateOf(0f)
@@ -128,6 +143,7 @@ class ScheduleGridState(
 
     fun resetAllStates() {
         expandedItem = null
+        pressedItem = null
         activeMoveIntent = null
         isTopHandleDragging = false
         isBottomHandleDragging = false
@@ -166,17 +182,50 @@ fun DayHeader(
     subTextColor: Color,
     strokeWidthPx: Float
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(style.dayHeaderHeight)) {
-        val shouldShowDate = !style.hideDateUnderDay && maxHeight >= 42.dp
-
-        Row(Modifier.fillMaxSize()) {
+    val todayTextColor = scheduleMarkerTextColor()
+    val uiStyle = LocalUiStyle.current
+    val isMiuix = uiStyle == UiStyle.MIUIX
+    val isCoui = uiStyle == UiStyle.COUI
+    val density = LocalDensity.current
+    val horizontalInset = if (density.fontScale > 1.2f) 1.dp else 3.dp
+    val dateMeasurer = rememberTextMeasurer()
+    val dateStyle = LocalTextStyle.current.merge(TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium))
+    BoxWithConstraints(Modifier.fillMaxWidth().background(scheduleRailColor())) {
+        val shouldShowDate = !style.hideDateUnderDay && minOf(style.dayHeaderHeight, maxHeight) >= 42.dp
+        val dateWidthPx = remember(dateMeasurer, dateStyle, dates, displayDays.size) {
+            dates.take(displayDays.size).maxOfOrNull {
+                dateMeasurer.measure(it, style = dateStyle, maxLines = 1).size.width
+            } ?: 0
+        }
+        val dateWidth = with(density) { dateWidthPx.toDp() }
+        val cellWidth = (maxWidth - style.timeColumnWidth) / displayDays.size.coerceAtLeast(1)
+        val markerPadding = if (isMiuix && todayIndex in displayDays.indices) 8.dp else 0.dp
+        val available = cellWidth - horizontalInset * 2
+        val compactDates = shouldShowDate && available < dateWidth + markerPadding + 8.dp
+        val todayStartsMonth = todayIndex == 0 ||
+            dates.getOrNull(todayIndex)?.take(2) != dates.getOrNull(todayIndex - 1)?.take(2)
+        val monthDatePadding = if (todayStartsMonth) markerPadding else 0.dp
+        val visibleCount = minOf(dates.size, displayDays.size)
+        val showDateRange = visibleCount > 0 && compactDates && available < dateWidth + monthDatePadding
+        val rangeHeight = if (showDateRange) with(density) { 16.sp.toDp() } else 0.dp
+        if (showDateRange) {
+            UiText(
+                text = "${dates.first()} – ${dates[visibleCount - 1]}",
+                modifier = Modifier.fillMaxWidth().padding(start = style.timeColumnWidth).height(rangeHeight),
+                textAlign = TextAlign.Center, color = subTextColor,
+                fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1,
+            )
+        }
+        Row(Modifier.fillMaxWidth().padding(top = rangeHeight).height(style.dayHeaderHeight)) {
             Box(
                 modifier = Modifier
                     .width(style.timeColumnWidth)
                     .fillMaxHeight()
                     .drawBehind {
                         if (!style.hideGridLines) {
-                            drawLine(lineColor, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidthPx)
+                            if (!isMiuix && !isCoui) {
+                                drawLine(lineColor, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidthPx)
+                            }
                             drawLine(lineColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidthPx)
                         }
                     },
@@ -186,7 +235,7 @@ fun DayHeader(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
+                    UiText(
                         text = currentYear,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -196,7 +245,7 @@ fun DayHeader(
 
                     if (!currentWeek.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(1.dp))
-                        Text(
+                        UiText(
                             text = currentWeek,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Normal,
@@ -215,54 +264,97 @@ fun DayHeader(
                     .fillMaxHeight()
                     .drawBehind {
                         if (!style.hideGridLines) {
-                            val cellWidth = size.width / displayDaysCount
-                            for (i in 1..displayDaysCount) {
-                                val x = i * cellWidth
-                                drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = strokeWidthPx)
+                            if (!isMiuix && !isCoui) {
+                                val cellWidth = size.width / displayDaysCount
+                                for (i in 1..displayDaysCount) {
+                                    val x = i * cellWidth
+                                    drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = strokeWidthPx)
+                                }
                             }
                             drawLine(lineColor, Offset(0f, size.height), Offset(size.width, size.height), strokeWidthPx)
                         }
                     }
             ) {
                 displayDays.forEachIndexed { index, day ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .background(if (index == todayIndex) MaterialTheme.colorScheme.primaryContainer.copy(0.4f) else Color.Transparent),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    val isToday = index == todayIndex
+                    val date = dates.getOrNull(index)?.takeIf { shouldShowDate }
+                    val markDateOnly = isMiuix && date != null
+                    val cellContent: @Composable () -> Unit = {
                         Column(
                             modifier = Modifier
-                                .fillMaxHeight()
-                                .padding(vertical = 1.dp),
+                                .fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Text(
+                            UiText(
                                 text = day,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = textColor,
+                                color = when {
+                                    !isToday -> textColor
+                                    markDateOnly -> uiStyleColors().accent
+                                    else -> todayTextColor
+                                },
                                 maxLines = 1,
-                                style = TextStyle(
-                                    lineHeight = 16.sp
-                                )
+                                lineHeight = 16.sp,
                             )
 
-                            if (shouldShowDate && dates.size > index) {
+                            if (date != null) {
+                                // The live grid uses MM-DD and the appearance preview uses MM/DD.
+                                val showMonth = index == 0 || date.take(2) != dates[index - 1].take(2)
+                                val dateText = if (compactDates && (!showMonth || showDateRange)) date.takeLast(2) else date
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = dates[index],
-                                    fontSize = 10.sp,
-                                    color = subTextColor,
-                                    maxLines = 1,
-                                    style = TextStyle(
-                                        lineHeight = 12.sp
+                                val dateLabel: @Composable () -> Unit = {
+                                    UiText(
+                                        text = dateText,
+                                        modifier = if (isCoui) Modifier.fillMaxWidth() else Modifier,
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isToday) FontWeight.Medium else FontWeight.Normal,
+                                        color = if (isToday) todayTextColor else subTextColor,
+                                        maxLines = 1,
+                                        lineHeight = 13.sp,
                                     )
-                                )
+                                }
+                                if (markDateOnly && isToday) {
+                                    UiScheduleMarker(Modifier.padding(horizontal = 1.dp), true, cornerRadius = 9.dp) {
+                                        Box(Modifier.padding(horizontal = 3.dp)) {
+                                            dateLabel()
+                                        }
+                                    }
+                                } else {
+                                    dateLabel()
+                                }
                             }
                         }
+                    }
+                    val dateSemantics = if (compactDates && date != null) {
+                        val spokenDate = stringResource(
+                            Res.string.date_format_month_day, date.take(2).toInt(), date.takeLast(2).toInt(),
+                        )
+                        val description = if (isToday) {
+                            "${stringResource(Res.string.widget_title_today)}, $day, $spokenDate"
+                        } else "$day, $spokenDate"
+                        Modifier.clearAndSetSemantics { contentDescription = description }
+                    } else Modifier
+                    val cellModifier = Modifier.weight(1f).fillMaxHeight().then(dateSemantics)
+                        .padding(horizontal = horizontalInset, vertical = 3.dp)
+                    if (isCoui) {
+                        Box(cellModifier.drawBehind {
+                            if (isToday) {
+                                val markerWidth = 14.dp.toPx()
+                                val y = size.height - 1.dp.toPx()
+                                drawLine(todayTextColor, Offset(center.x - markerWidth / 2, y),
+                                    Offset(center.x + markerWidth / 2, y), strokeWidth = 2.dp.toPx(),
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                            }
+                        }) { cellContent() }
+                    } else if (markDateOnly) {
+                        Box(cellModifier) { cellContent() }
+                    } else {
+                        UiScheduleMarker(cellModifier, isToday, cornerRadius = 12.dp) { cellContent() }
                     }
                 }
             }
@@ -289,6 +381,7 @@ fun TimeColumn(
     activeDragHour: Int? = null,
     activeDragMinuteStr: String? = null
 ) {
+    val currentSectionTextColor = scheduleMarkerTextColor()
     val currentHour = remember {
         try {
             Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).hour
@@ -297,7 +390,7 @@ fun TimeColumn(
         }
     }
 
-    Column(modifier.width(style.timeColumnWidth)) {
+    Column(modifier.width(style.timeColumnWidth).background(scheduleRailColor())) {
         for (index in 0 until maxGridSections) {
             val isCurrentHourActive = if (is24HourMode) {
                 currentHour == index && currentSectionIndex != -1
@@ -305,12 +398,69 @@ fun TimeColumn(
                 index + 1 == currentSectionIndex
             }
 
+            val sectionContent: @Composable BoxScope.() -> Unit = {
+                val h = style.sectionHeight
+                if (is24HourMode && activeDragMinuteStr != null && index == activeDragHour) {
+                    Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                        UiText(text = ":$activeDragMinuteStr", fontSize = if (h < 32.dp) 11.sp else 12.sp,
+                            fontWeight = FontWeight.Bold, color = textColor)
+                    }
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = if (is24HourMode) Arrangement.Top else Arrangement.Center,
+                    modifier = Modifier.padding(horizontal = 1.dp).then(if (is24HourMode) Modifier.offset(y = (-7).dp) else Modifier)
+                ) {
+                    if (is24HourMode) {
+                        val formatHourStr = "${index.toString().padStart(2, '0')}:00"
+                        UiScheduleMarker(
+                            modifier = Modifier.padding(horizontal = 1.dp),
+                            selected = isCurrentHourActive,
+                            cornerRadius = 8.dp,
+                        ) {
+                            UiText(formatHourStr, fontSize = if (h < 32.dp) 11.sp else 12.sp,
+                                fontWeight = FontWeight.Medium, color = if (isCurrentHourActive) currentSectionTextColor else textColor,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                        }
+                    } else {
+                        val slot = timeSlots.getOrNull(index)
+                        if (slot != null) {
+                            UiScheduleMarker(
+                                modifier = Modifier.padding(horizontal = 1.dp),
+                                selected = isCurrentHourActive,
+                                cornerRadius = 8.dp,
+                            ) {
+                                UiText(
+                                    text = slot.alias ?: slot.number.toString(),
+                                    fontSize = if (h < 32.dp) 11.sp else 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCurrentHourActive) currentSectionTextColor else textColor,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
+                                )
+                            }
+                            if (!style.hideSectionTime) {
+                                when {
+                                    h >= 52.dp -> {
+                                        Spacer(Modifier.height(2.dp))
+                                        TimeText(slot.startTime, subTextColor)
+                                        TimeText(slot.endTime, subTextColor)
+                                    }
+                                    h >= 38.dp -> UiText(text = "${slot.startTime}-${slot.endTime}", fontSize = 8.sp, color = subTextColor, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(style.sectionHeight)
                     .clickable { onTimeSlotClicked() }
-                    .background(if (isCurrentHourActive) MaterialTheme.colorScheme.primaryContainer.copy(0.4f) else Color.Transparent)
+                    .background(if (isCurrentHourActive) uiStyleColors().accent.copy(alpha = 0.1f) else Color.Transparent)
                     .drawBehind {
                         if (!style.hideGridLines) {
                             drawLine(lineColor, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidthPx)
@@ -320,70 +470,25 @@ fun TimeColumn(
                         }
                     },
                 contentAlignment = if (is24HourMode) Alignment.TopCenter else Alignment.Center
-            ) {
-                val h = maxHeight
-                if (is24HourMode && activeDragMinuteStr != null && index == activeDragHour) {
-                    Box(
-                        modifier = Modifier.matchParentSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = ":$activeDragMinuteStr",
-                            fontSize = if (h < 32.dp) 11.sp else 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                    }
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = if (is24HourMode) Arrangement.Top else Arrangement.Center,
-                    modifier = Modifier
-                        .padding(horizontal = 1.dp)
-                        .then(if (is24HourMode) Modifier.offset(y = (-7).dp) else Modifier)
-                ) {
-                    if (is24HourMode) {
-                        val formatHourStr = "${index.toString().padStart(2, '0')}:00"
-                        Text(
-                            text = formatHourStr,
-                            fontSize = if (h < 32.dp) 11.sp else 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isCurrentHourActive) MaterialTheme.colorScheme.primary else textColor
-                        )
-                    } else {
-                        val slot = timeSlots.getOrNull(index)
-                        if (slot != null) {
-                            Text(
-                                text = slot.alias ?: slot.number.toString(),
-                                fontSize = if (h < 32.dp) 11.sp else 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textColor,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (!style.hideSectionTime) {
-                                when {
-                                    h >= 52.dp -> {
-                                        Spacer(Modifier.height(2.dp))
-                                        TimeText(slot.startTime, subTextColor)
-                                        TimeText(slot.endTime, subTextColor)
-                                    }
-                                    h >= 38.dp -> {
-                                        Text(text = "${slot.startTime}-${slot.endTime}", fontSize = 8.sp, color = subTextColor, maxLines = 1)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            ) { sectionContent() }
         }
     }
 }
 
-/**
- * 课表编辑状态下的拉伸手柄（上下边界调整）
- */
+@Composable
+private fun scheduleMarkerTextColor() = when (LocalUiStyle.current) {
+    UiStyle.MATERIAL, UiStyle.MIUIX -> MaterialTheme.colorScheme.onPrimaryContainer
+    UiStyle.COUI -> uiStyleColors().accent
+}
+
+@Composable
+private fun scheduleRailColor() = when (LocalUiStyle.current) {
+    UiStyle.MATERIAL -> MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = .76f)
+    UiStyle.MIUIX -> uiStyleColors().surface.copy(alpha = .88f)
+    UiStyle.COUI -> uiStyleColors().surface
+}
+
+/** 课表编辑状态下的拉伸手柄（上下边界调整） */
 @Composable
 fun BoxScope.CourseEditHandles(
     onDragStart: (isTop: Boolean) -> Unit,
@@ -444,7 +549,7 @@ private fun EditHandleDot() {
 
 @Composable
 fun TimeText(text: String, color: Color) {
-    Text(text = text, fontSize = 10.sp, color = color, style = TextStyle(lineHeight = 1.em))
+    UiText(text = text, fontSize = 10.sp, color = color, lineHeight = 1.em, maxLines = 1)
 }
 
 /**

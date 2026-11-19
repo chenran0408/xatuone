@@ -1,5 +1,15 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.conversion
 
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.MiuixSettingsGroup
+import com.xingheyuzhuan.shiguangschedule.ui.components.CouiSettingsGroup
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiServiceRow
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiListDivider
+import com.xingheyuzhuan.shiguangschedule.ui.components.CouiCourseSnackbar
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,7 +25,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -49,16 +58,8 @@ import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
-import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.a11y_details
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.chevron_right_24px
-import shiguangschedule.shared.generated.resources.desc_backup_restore
-import shiguangschedule.shared.generated.resources.desc_export_ics_with_alarm
-import shiguangschedule.shared.generated.resources.desc_export_json_with_config
-import shiguangschedule.shared.generated.resources.desc_import_json
-import shiguangschedule.shared.generated.resources.desc_school_import_quick
-import shiguangschedule.shared.generated.resources.desc_sync_to_system_calendar
 import shiguangschedule.shared.generated.resources.item_backup_restore
 import shiguangschedule.shared.generated.resources.item_export_course_file
 import shiguangschedule.shared.generated.resources.item_export_ics_file
@@ -138,7 +139,7 @@ fun CourseTableConversionScreen(
                 }
                 is ConversionEvent.LaunchExportFileCreator -> {
                     val timestamp = Clock.System.now().toEpochMilliseconds()
-                    val fileName = "shiguangschedule_$timestamp.json"
+                    val fileName = "xatuone_$timestamp.json"
                     val bytes = event.jsonContent.encodeToByteArray()
 
                     val shareTempDir = appStorage.cacheDir / "share_temp"
@@ -153,7 +154,7 @@ fun CourseTableConversionScreen(
                 }
                 is ConversionEvent.LaunchExportIcsFileCreator -> {
                     val timestamp = Clock.System.now().toEpochMilliseconds()
-                    val fileName = "shiguangschedule_$timestamp.ics"
+                    val fileName = "xatuone_$timestamp.ics"
                     val bytes = event.icsContent.encodeToByteArray()
                     val shareTempDir = appStorage.cacheDir / "share_temp"
                     val tempFilePath = shareTempDir / fileName
@@ -173,20 +174,10 @@ fun CourseTableConversionScreen(
         }
     }
 
-    Scaffold(
+    UiScaffold(
         topBar = {
             Column {
-                TopAppBar(
-                    title = { Text(stringResource(Res.string.title_conversion)) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                                contentDescription = stringResource(Res.string.a11y_back)
-                            )
-                        }
-                    }
-                )
+                UiTopAppBar(title = "课表文件与系统日历", onBack = onBack)
                 if (uiState.isLoading) {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
@@ -196,87 +187,27 @@ fun CourseTableConversionScreen(
                 }
             }
         },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) { data ->
+            if (LocalUiStyle.current == UiStyle.COUI) CouiCourseSnackbar(data)
+            else androidx.compose.material3.Snackbar(data)
+        } }
     ) { paddingValues ->
         Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
+            Modifier.padding(paddingValues)
+                .padding(horizontal = if (LocalUiStyle.current == UiStyle.COUI) 0.dp else 16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            Spacer(Modifier.height(16.dp))
-
-            Text(stringResource(Res.string.section_file_conversion), style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    ConversionRow(
-                        title = stringResource(Res.string.item_import_course_file),
-                        desc = stringResource(Res.string.desc_import_json),
-                        onClick = { viewModel.onImportClick() }
-                    )
-                    HorizontalDivider()
-                    ConversionRow(
-                        title = stringResource(Res.string.item_export_course_file),
-                        desc = stringResource(Res.string.desc_export_json_with_config),
-                        onClick = { viewModel.onExportClick() }
-                    )
-                    HorizontalDivider()
-                    ConversionRow(
-                        title = stringResource(Res.string.item_export_ics_file),
-                        desc = stringResource(Res.string.desc_export_ics_with_alarm),
-                        onClick = { viewModel.onExportIcsClick() }
-                    )
-                }
+            ConversionGroup(stringResource(Res.string.section_file_conversion)) {
+                UiServiceRow(stringResource(Res.string.item_import_course_file), "", viewModel::onImportClick)
+                UiListDivider()
+                UiServiceRow(stringResource(Res.string.item_export_course_file), "", viewModel::onExportClick)
+                UiListDivider()
+                UiServiceRow(stringResource(Res.string.item_export_ics_file), "", viewModel::onExportIcsClick)
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(stringResource(Res.string.section_school_import), style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    ConversionRow(
-                        title = stringResource(Res.string.item_school_system_import),
-                        desc = stringResource(Res.string.desc_school_import_quick),
-                        onClick = { onNavigate(Destination.XatuLogin) }
-                    )
-                }
+            ConversionGroup(stringResource(Res.string.section_sync)) {
+                UiServiceRow(stringResource(Res.string.item_sync_to_system_calendar), "", viewModel::onSyncToCalendarClick)
             }
-
             Spacer(Modifier.height(16.dp))
-
-            Text(stringResource(Res.string.section_sync), style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    ConversionRow(
-                        title = stringResource(Res.string.item_sync_to_system_calendar),
-                        desc = stringResource(Res.string.desc_sync_to_system_calendar),
-                        onClick = { viewModel.onSyncToCalendarClick() }
-                    )
-                    HorizontalDivider()
-                    ConversionRow(
-                        title = stringResource(Res.string.item_backup_restore),
-                        desc = stringResource(Res.string.desc_backup_restore),
-                        onClick = { onNavigate(Destination.BackupAndRestore) }
-                    )
-                }
-            }
-            Spacer(Modifier.height(32.dp))
         }
     }
 
@@ -311,32 +242,14 @@ fun CourseTableConversionScreen(
     }
 }
 
-/**
- * 转换页面的列表行子组件。
- */
 @Composable
-private fun ConversionRow(
-    title: String,
-    desc: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun ConversionGroup(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    when (LocalUiStyle.current) {
+        UiStyle.COUI -> CouiSettingsGroup(title, content)
+        UiStyle.MIUIX -> MiuixSettingsGroup(title, content)
+        UiStyle.MATERIAL -> {
+            Text(title, Modifier.padding(top = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.titleLarge)
+            Card(modifier = Modifier.fillMaxWidth(), content = content)
         }
-        Icon(
-            imageVector = vectorResource(Res.drawable.chevron_right_24px),
-            contentDescription = stringResource(Res.string.a11y_details),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }

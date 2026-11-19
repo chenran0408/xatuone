@@ -1,5 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schoolselection.list
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.Destination
+import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.WebViewScreen
+import kotlinx.coroutines.CancellationException
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -54,7 +59,6 @@ import shiguangschedule.shared.generated.resources.info_24px
 import shiguangschedule.shared.generated.resources.label_contributor_format
 import shiguangschedule.shared.generated.resources.label_contributor_unknown
 import shiguangschedule.shared.generated.resources.text_no_adapter_for_category_school
-import shiguangschedule.shared.generated.resources.text_no_detailed_description
 
 /**
  * 二级页面：显示特定学校和当前类别下的所有适配器列表。
@@ -95,6 +99,8 @@ fun AdapterSelectionScreen(
         try {
             viewModel.updateSelectedCategory(currentCategory)
             adapters = viewModel.getAdaptersForSchoolAndCategory(schoolId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             adapters = emptyList()
         } finally {
@@ -102,12 +108,24 @@ fun AdapterSelectionScreen(
         }
     }
 
+    fun importPage(adapter: Adapter): Destination.WebView = Destination.WebView(
+        initialUrl = adapter.import_url.orEmpty().ifBlank { "about:blank" },
+        assetJsPath = "$resourceFolder/${adapter.asset_js_path.ifBlank { "${adapter.adapter_id}.js" }}",
+    )
+
+    if (schoolId == "XATU" && !isLoading) {
+        adapters.singleOrNull()?.let { adapter ->
+            val page = importPage(adapter)
+            WebViewScreen(onNavigate, onBack, page.initialUrl, page.assetJsPath, page.xatuLogin)
+            return
+        }
+    }
+
     val categoryDisplayName = getCategoryDisplayName()
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("$schoolName - $categoryDisplayName", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            UiTopAppBar(title = "$schoolName - $categoryDisplayName",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -115,8 +133,7 @@ fun AdapterSelectionScreen(
                             contentDescription = stringResource(Res.string.a11y_back_to_school_list)
                         )
                     }
-                }
-            )
+                })
         }
     ) { paddingValues ->
         Box(
@@ -142,23 +159,7 @@ fun AdapterSelectionScreen(
                         items(adapters, key = { it.adapter_id }) { adapter ->
                             AdapterCard(
                                 adapter = adapter,
-                                onClick = { selectedAdapter ->
-                                    val initialUrl = (selectedAdapter.import_url ?: "").ifBlank { "about:blank" }
-                                    val jsFileName = selectedAdapter.asset_js_path
-
-                                    // 构建正确的 JS 路径
-                                    val assetJsPath = if (jsFileName.isNotBlank()) {
-                                        "$resourceFolder/$jsFileName"
-                                    } else {
-                                        "$resourceFolder/${selectedAdapter.adapter_id}.js"
-                                    }
-                                    onNavigate(
-                                        Destination.WebView(
-                                            initialUrl = initialUrl,
-                                            assetJsPath = assetJsPath
-                                        )
-                                    )
-                                }
+                                onClick = { onNavigate(importPage(it)) }
                             )
                         }
                     }
@@ -200,14 +201,6 @@ fun AdapterCard(
             }
 
             Spacer(Modifier.height(8.dp))
-
-            // 描述
-            Text(
-                text = adapter.description.ifBlank { stringResource(Res.string.text_no_detailed_description) },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

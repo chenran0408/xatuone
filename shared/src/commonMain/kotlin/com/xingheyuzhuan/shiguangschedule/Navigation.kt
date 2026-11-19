@@ -28,8 +28,10 @@ sealed interface Destination : NavKey {
     // --- 一级导航页面（底栏对应页面） ---
     @Serializable data object CourseSchedule : MainDestination
     @Serializable data object Settings : MainDestination
-    @Serializable data object TodaySchedule : MainDestination
+    @Serializable data object TodaySchedule : Destination
     @Serializable data object XatuHome : MainDestination
+    @Serializable data object XatuServices : MainDestination
+    @Serializable data object XatuAcademic : MainDestination
 
     // --- 二级功能页面 ---
     @Serializable data object TimeScheduleManagement : Destination
@@ -47,10 +49,23 @@ sealed interface Destination : NavKey {
     @Serializable data object CourseManagementList : Destination
     @Serializable data object StyleSettings : Destination
     @Serializable data object ThemeSettings : Destination
+    @Serializable data object CourseSettings : Destination
+    @Serializable data object CourseStartDateSettings : Destination
+    @Serializable data object CourseTools : Destination
+    @Serializable data object AcademicSettings : Destination
+    @Serializable data object CampusSettings : Destination
+    @Serializable data object PrivacySettings : Destination
+    @Serializable data object WebSettings : Destination
     @Serializable data object BackupAndRestore : Destination
     @Serializable data object LanguageSettings : Destination
     @Serializable data object WidgetStyleSettings : Destination
     @Serializable data object HolidayManagement : Destination
+
+    @Serializable
+    data class XatuService(val page: String) : Destination
+
+    @Serializable
+    data class XatuSyncLogin(val tableId: String) : Destination
 
     // --- 动态传参页面 ---
     @Serializable
@@ -65,7 +80,9 @@ sealed interface Destination : NavKey {
     data class WebView(
         val initialUrl: String? = "about:blank",
         val assetJsPath: String? = null,
-        val xatuLogin: Boolean = false
+        val xatuLogin: Boolean = false,
+        val serviceTitle: String? = null,
+        val courseSyncTableId: String? = null,
     ) : Destination
 
     @Serializable
@@ -92,6 +109,15 @@ sealed interface Destination : NavKey {
     ) : Destination
 }
 
+/** Keep primary entries (and their saved state/ViewModels) when opening another tab. */
+internal fun MutableList<NavKey>.navigateTo(destination: Destination) {
+    if (lastOrNull() == destination) return
+    if (destination.isMainScreen) {
+        removeAll { it !is Destination.MainDestination || it == destination }
+    }
+    add(destination)
+}
+
 val Destination.isMainScreen: Boolean
     get() = this is Destination.MainDestination
 
@@ -105,6 +131,10 @@ val navSerializersModule = SerializersModule {
         subclass(Destination.Settings::class)
         subclass(Destination.TodaySchedule::class)
         subclass(Destination.XatuHome::class)
+        subclass(Destination.XatuServices::class)
+        subclass(Destination.XatuAcademic::class)
+        subclass(Destination.XatuService::class)
+        subclass(Destination.XatuSyncLogin::class)
 
         // 普通功能页面
         subclass(Destination.TimeScheduleManagement::class)
@@ -122,6 +152,13 @@ val navSerializersModule = SerializersModule {
         subclass(Destination.CourseManagementList::class)
         subclass(Destination.StyleSettings::class)
         subclass(Destination.ThemeSettings::class)
+        subclass(Destination.CourseSettings::class)
+        subclass(Destination.CourseStartDateSettings::class)
+        subclass(Destination.CourseTools::class)
+        subclass(Destination.AcademicSettings::class)
+        subclass(Destination.CampusSettings::class)
+        subclass(Destination.PrivacySettings::class)
+        subclass(Destination.WebSettings::class)
         subclass(Destination.BackupAndRestore::class)
         subclass(Destination.LanguageSettings::class)
         subclass(Destination.WidgetStyleSettings::class)

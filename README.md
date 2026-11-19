@@ -13,6 +13,14 @@
 
 XATU 页面复用 Android WebView 的持久化会话。Cookie 在用户退出登录或切换学号时清理，普通页面切换会保留会话。
 
+## 应用身份与图标
+
+- 中文名称：一校通；英文名称：XATU One。Debug 与 Release 使用相同名称。
+- Application ID：`com.xatuone`。源码命名空间、签名与已有存储键保持兼容，不随品牌更名。
+- 标识源文件：`shared/src/commonMain/composeResources/drawable/ic_brand_mark.xml`。Android 构建自动生成同源资源，桌面自适应图标、单色主题图标、启动页、通知和关于页共用此标识。
+- 图标背景为深青色；启动页另有浅色、深色背景。不维护重复的密度位图或单独的圆形图标。
+- 新建 WebDAV 备份默认目录为 `XATU One`；已有远端目录及旧配置缺省路径继续沿用，避免更名后找不到备份。
+
 ## 构建
 
 ```text

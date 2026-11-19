@@ -1,40 +1,51 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.backup
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiListDivider
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSelectionCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiLoadingIndicator
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.MiuixCourseSnackbar
+import com.xingheyuzhuan.shiguangschedule.ui.components.CouiCourseSnackbar
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,14 +53,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.tool.FileManagerCallbacks
 import com.xingheyuzhuan.shiguangschedule.tool.rememberFileManager
 import kotlinx.coroutines.launch
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.rememberCouiTextStyle
+import com.itos.coui.theme.CouiTheme
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
@@ -62,18 +81,17 @@ import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.action_confirm
-import shiguangschedule.shared.generated.resources.action_reset
+import shiguangschedule.shared.generated.resources.action_disconnect_webdav
 import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.backup_target_local_zip
 import shiguangschedule.shared.generated.resources.backup_target_webdav
 import shiguangschedule.shared.generated.resources.cloud_24px
-import shiguangschedule.shared.generated.resources.desc_backup_data
-import shiguangschedule.shared.generated.resources.desc_restore_data
 import shiguangschedule.shared.generated.resources.desc_webdav_connected
-import shiguangschedule.shared.generated.resources.desc_webdav_path_hint
 import shiguangschedule.shared.generated.resources.desc_webdav_unconfigured
 import shiguangschedule.shared.generated.resources.dialog_title_backup_target
 import shiguangschedule.shared.generated.resources.dialog_title_config_webdav
+import shiguangschedule.shared.generated.resources.dialog_title_disconnect_webdav
+import shiguangschedule.shared.generated.resources.dialog_message_disconnect_webdav
 import shiguangschedule.shared.generated.resources.dialog_title_restore_source
 import shiguangschedule.shared.generated.resources.download_24px
 import shiguangschedule.shared.generated.resources.error_stream_open_failed
@@ -164,21 +182,17 @@ fun BackupScreen(
         }
     }
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.item_backup_restore)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = stringResource(Res.string.a11y_back)
-                        )
-                    }
-                }
-            )
+            UiTopAppBar(title = stringResource(Res.string.item_backup_restore), onBack = onBack)
         },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                if (LocalUiStyle.current == UiStyle.MIUIX) MiuixCourseSnackbar(data)
+                else if (LocalUiStyle.current == UiStyle.COUI) CouiCourseSnackbar(data)
+                else androidx.compose.material3.Snackbar(data)
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -189,24 +203,31 @@ fun BackupScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             if (state.isBusy || state.isTesting) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                when (LocalUiStyle.current) {
+                    UiStyle.MIUIX -> top.yukonga.miuix.kmp.basic.CircularProgressIndicator(Modifier.size(24.dp))
+                    UiStyle.COUI -> Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        UiLoadingIndicator(Modifier.size(24.dp))
+                        UiText(stringResource(Res.string.title_loading))
+                    }
+                    UiStyle.MATERIAL ->
+                        androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
 
             CardGroup(title = stringResource(Res.string.section_data_maintenance)) {
                 MenuActionItem(
                     title = stringResource(Res.string.item_backup_data),
-                    subtitle = stringResource(Res.string.desc_backup_data),
                     icon = vectorResource(Res.drawable.upload_24px),
                     enabled = !state.isBusy,
                     onClick = { showBackupTargetDialog = true }
                 )
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
+                UiListDivider()
                 MenuActionItem(
                     title = stringResource(Res.string.item_restore_data),
-                    subtitle = stringResource(Res.string.desc_restore_data),
                     icon = vectorResource(Res.drawable.download_24px),
                     enabled = !state.isBusy,
                     onClick = { showRestoreTargetDialog = true }
@@ -270,7 +291,7 @@ fun BackupScreen(
                                     val year = now.year
                                     val month = now.month.number.toString().padStart(2, '0')
                                     val day = now.day.toString().padStart(2, '0')
-                                    val defaultFileName = "Shiguang_Backup_${year}${month}${day}.zip"
+                                    val defaultFileName = "XATU_One_Backup_${year}${month}${day}.zip"
                                     fileManager.exportFile(defaultFileName, bytes)
                                 } else {
                                     snackbarHostState.showSnackbar(streamOpenFailedMsg)
@@ -312,24 +333,28 @@ fun CardGroup(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(PaddingValues(start = 4.dp))
-        )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                content = content
-            )
+        when (LocalUiStyle.current) {
+            UiStyle.MIUIX -> {
+                top.yukonga.miuix.kmp.basic.SmallTitle(title)
+                top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth(), content = content)
+                }
+            }
+            UiStyle.COUI -> com.itos.coui.layout.Group(title = title, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth(), content = content)
+            }
+            UiStyle.MATERIAL -> {
+                Text(title, style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) { Column(Modifier.fillMaxWidth(), content = content) }
+            }
         }
     }
 }
@@ -337,28 +362,41 @@ fun CardGroup(
 @Composable
 fun MenuActionItem(
     title: String,
-    subtitle: String,
+    subtitle: String = "",
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    ListItem(
-        headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
-        supportingContent = { Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-        leadingContent = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-        },
-        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 4.dp)
-    )
+    when (LocalUiStyle.current) {
+        UiStyle.MIUIX -> top.yukonga.miuix.kmp.basic.BasicComponent(
+            modifier = Modifier.fillMaxWidth(),
+            title = title,
+            summary = subtitle.takeIf { it.isNotEmpty() },
+            startAction = { top.yukonga.miuix.kmp.basic.Icon(icon, contentDescription = null) },
+            onClick = onClick,
+            enabled = enabled,
+            insideMargin = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        )
+        UiStyle.COUI -> com.itos.coui.layout.Item(
+            modifier = Modifier.fillMaxWidth(),
+            icon = { Icon(icon, contentDescription = null) },
+            title = { com.itos.coui.text.Text(text = title, kind = com.itos.coui.text.CouiTextKind.PreferenceTitle) },
+            summary = subtitle.takeIf { it.isNotEmpty() }?.let {
+                { com.itos.coui.text.Text(text = it, kind = com.itos.coui.text.CouiTextKind.PreferenceSummary) }
+            },
+            enabled = enabled,
+            onClick = onClick,
+        )
+        UiStyle.MATERIAL -> ListItem(
+            headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
+            supportingContent = if (subtitle.isNotEmpty()) {
+                { Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            } else null,
+            leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)) },
+            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 4.dp)
+        )
+    }
 }
 
 @Composable
@@ -367,51 +405,24 @@ fun TargetSelectionDialog(
     onDismiss: () -> Unit,
     onTargetSelected: (BackupTarget) -> Unit
 ) {
-    var selectedTarget by remember { mutableStateOf(BackupTarget.entries.first()) }
+    var selectedTarget by rememberSaveable { mutableStateOf(BackupTarget.LOCAL_ZIP) }
 
-    AlertDialog(
+    UiDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        title = title,
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                BackupTarget.entries.forEach { target ->
-                    val isSelected = target == selectedTarget
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedTarget = target }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { selectedTarget = target }
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = stringResource(target.stringRes),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
+            listOf(BackupTarget.LOCAL_ZIP, BackupTarget.WEBDAV).forEach { target ->
+                UiSelectionCard(
+                    selected = target == selectedTarget,
+                    onClick = { selectedTarget = target },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    UiText(stringResource(target.stringRes), Modifier.padding(12.dp))
                 }
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.action_cancel))
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onTargetSelected(selectedTarget) }
-            ) {
-                Text(stringResource(Res.string.action_confirm))
-            }
-        }
+        dismissButton = UiDialogAction(stringResource(Res.string.action_cancel), onDismiss),
+        confirmButton = UiDialogAction(stringResource(Res.string.action_confirm), { onTargetSelected(selectedTarget) }),
     )
 }
 
@@ -426,12 +437,125 @@ fun WebDavConfigDialog(
     var inputUsername by remember { mutableStateOf(state.username) }
     var inputPassword by remember { mutableStateOf("") }
     var inputRootPath by remember { mutableStateOf(state.rootPath) }
+    var showDisconnectConfirmation by remember { mutableStateOf(false) }
+    val hasSavedConfig = state.baseUrl.isNotBlank()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        UiDialog(
+            onDismissRequest = { if (!state.isTesting) onDismiss() },
+            title = stringResource(Res.string.dialog_title_config_webdav),
+            text = {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    UiInputField(
+                        value = inputUrl,
+                        onValueChange = { inputUrl = it },
+                        label = stringResource(Res.string.label_webdav_url),
+                        singleLine = true,
+                    )
+                    UiInputField(
+                        value = inputUsername,
+                        onValueChange = { inputUsername = it },
+                        label = stringResource(Res.string.label_webdav_account),
+                        singleLine = true,
+                    )
+                    CouiPasswordInputField(
+                        value = inputPassword,
+                        onValueChange = { inputPassword = it },
+                        label = stringResource(
+                            if (state.hasSavedPassword) Res.string.label_webdav_pwd_saved
+                            else Res.string.label_webdav_pwd_empty
+                        ),
+                    )
+                    UiInputField(
+                        value = inputRootPath,
+                        onValueChange = { inputRootPath = it },
+                        label = stringResource(Res.string.label_webdav_path),
+                        singleLine = true,
+                    )
+                }
+            },
+            neutralButton = if (hasSavedConfig) UiDialogAction(
+                text = stringResource(Res.string.action_disconnect_webdav),
+                enabled = !state.isTesting,
+                onClick = { showDisconnectConfirmation = true },
+            ) else null,
+            confirmButton = UiDialogAction(
+                text = if (state.isTesting) stringResource(Res.string.title_loading)
+                else stringResource(Res.string.action_confirm),
+                enabled = !state.isTesting,
+                onClick = { onSave(inputUrl, inputUsername, inputPassword, inputRootPath) },
+            ),
+            dismissButton = UiDialogAction(
+                text = stringResource(Res.string.action_cancel),
+                enabled = !state.isTesting,
+                onClick = onDismiss,
+            ),
+        )
+    } else if (LocalUiStyle.current == UiStyle.MIUIX) {
+        UiDialog(
+            onDismissRequest = { if (!state.isTesting) onDismiss() },
+            title = stringResource(Res.string.dialog_title_config_webdav),
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    top.yukonga.miuix.kmp.basic.TextField(
+                        value = inputUrl,
+                        onValueChange = { inputUrl = it },
+                        label = stringResource(Res.string.label_webdav_url),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    top.yukonga.miuix.kmp.basic.TextField(
+                        value = inputUsername,
+                        onValueChange = { inputUsername = it },
+                        label = stringResource(Res.string.label_webdav_account),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    top.yukonga.miuix.kmp.basic.TextField(
+                        value = inputPassword,
+                        onValueChange = { inputPassword = it },
+                        label = stringResource(
+                            if (state.hasSavedPassword) Res.string.label_webdav_pwd_saved
+                            else Res.string.label_webdav_pwd_empty
+                        ),
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    top.yukonga.miuix.kmp.basic.TextField(
+                        value = inputRootPath,
+                        onValueChange = { inputRootPath = it },
+                        label = stringResource(Res.string.label_webdav_path),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            neutralButton = if (hasSavedConfig) UiDialogAction(
+                text = stringResource(Res.string.action_disconnect_webdav),
+                enabled = !state.isTesting,
+                onClick = { showDisconnectConfirmation = true },
+            ) else null,
+            confirmButton = UiDialogAction(
+                text = if (state.isTesting) stringResource(Res.string.title_loading)
+                else stringResource(Res.string.action_confirm),
+                enabled = !state.isTesting,
+                onClick = { onSave(inputUrl, inputUsername, inputPassword, inputRootPath) },
+            ),
+            dismissButton = UiDialogAction(
+                text = stringResource(Res.string.action_cancel),
+                enabled = !state.isTesting,
+                onClick = onDismiss,
+            ),
+        )
+    } else AlertDialog(
+        onDismissRequest = { if (!state.isTesting) onDismiss() },
         title = { Text(stringResource(Res.string.dialog_title_config_webdav)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = inputUrl,
                     onValueChange = { inputUrl = it },
@@ -463,10 +587,20 @@ fun WebDavConfigDialog(
                     value = inputRootPath,
                     onValueChange = { inputRootPath = it },
                     label = { Text(stringResource(Res.string.label_webdav_path)) },
-                    supportingText = { Text(stringResource(Res.string.desc_webdav_path_hint)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (hasSavedConfig) {
+                    TextButton(
+                        onClick = { showDisconnectConfirmation = true },
+                        enabled = !state.isTesting,
+                    ) {
+                        Text(
+                            stringResource(Res.string.action_disconnect_webdav),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -481,15 +615,64 @@ fun WebDavConfigDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                onDisconnect()
-                onDismiss()
-            }) {
-                Text(
-                    text = stringResource(Res.string.action_reset),
-                    color = MaterialTheme.colorScheme.error
-                )
+            TextButton(onClick = onDismiss, enabled = !state.isTesting) {
+                Text(stringResource(Res.string.action_cancel))
             }
         }
+    )
+
+    if (showDisconnectConfirmation) {
+        UiDialog(
+            onDismissRequest = { showDisconnectConfirmation = false },
+            title = stringResource(Res.string.dialog_title_disconnect_webdav),
+            text = { UiText(stringResource(Res.string.dialog_message_disconnect_webdav)) },
+            dismissButton = UiDialogAction(
+                text = stringResource(Res.string.action_cancel),
+                onClick = { showDisconnectConfirmation = false }
+            ),
+            confirmButton = UiDialogAction(
+                text = stringResource(Res.string.action_disconnect_webdav),
+                onClick = {
+                    showDisconnectConfirmation = false
+                    onDisconnect()
+                }
+            )
+        )
+    }
+}
+
+@Composable
+private fun CouiPasswordInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        visualTransformation = PasswordVisualTransformation(),
+        textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = CouiTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(CouiTheme.colorScheme.accent),
+        decorationBox = { innerTextField ->
+            com.itos.coui.layout.Item(
+                title = {
+                    com.itos.coui.text.Text(
+                        text = label,
+                        kind = CouiTextKind.PreferenceTitle,
+                    )
+                },
+                summary = {
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        innerTextField()
+                    }
+                },
+            )
+        },
     )
 }

@@ -1,0 +1,3 @@
+Sync your timetable and check grades, exams and dorm electricity in the app.
+Weekday headers fit narrow screens and larger text across all three themes. Weeks spanning two months clearly mark the change.
+The home date is readable in MIUIX dark mode. Home and electricity details now show the remaining balance and its last update together.

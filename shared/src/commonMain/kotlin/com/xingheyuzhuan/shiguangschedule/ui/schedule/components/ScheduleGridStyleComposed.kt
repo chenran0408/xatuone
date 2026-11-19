@@ -39,6 +39,7 @@ data class ScheduleGridStyleComposed(
     val showStartTime: Boolean,
 
     val hideLocation: Boolean,       // 是否隐藏上课地点
+    val hideCourseNumber: Boolean,
     val hideTeacher: Boolean,        // 是否隐藏授课老师
     val removeLocationAt: Boolean,   // 是否移除地点前的 @ 符号
 
@@ -75,6 +76,7 @@ data class ScheduleGridStyleComposed(
                 hideDateUnderDay = this.hideDateUnderDay,
                 showStartTime = this.showStartTime,
                 hideLocation = this.hideLocation,
+                hideCourseNumber = this.hideCourseNumber,
                 hideTeacher = this.hideTeacher,
                 removeLocationAt = this.removeLocationAt,
                 textAlignCenterHorizontal = this.textAlignCenterHorizontal,

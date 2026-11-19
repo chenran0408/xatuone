@@ -1,5 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.update
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -72,10 +75,9 @@ fun UpdateRepoScreen(
     // 观察 ViewModel 的 uiState
     val uiState by viewModel.uiState.collectAsState()
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(text = stringResource(Res.string.title_update_repo_screen)) },
+            UiTopAppBar(title = stringResource(Res.string.title_update_repo_screen),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -83,8 +85,7 @@ fun UpdateRepoScreen(
                             contentDescription = stringResource(Res.string.a11y_back)
                         )
                     }
-                }
-            )
+                })
         }
     ) { innerPadding ->
         Column(

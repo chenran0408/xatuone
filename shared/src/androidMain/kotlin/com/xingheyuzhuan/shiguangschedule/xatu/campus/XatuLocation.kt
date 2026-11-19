@@ -1,5 +1,6 @@
 package com.xingheyuzhuan.shiguangschedule.xatu.campus
 
+import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCheckinLocation
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -11,6 +12,16 @@ import kotlin.math.sqrt
 data class XatuCoordinate(val latitude: Double, val longitude: Double, val system: String)
 
 object XatuLocation {
+    fun checkinLocation(latitude: String, longitude: String, enabled: Boolean, system: String = "GCJ02"): XatuCheckinLocation {
+        val lat = latitude.toDoubleOrNull()
+        val lng = longitude.toDoubleOrNull()
+        require(lat != null && lat in -90.0..90.0 && lng != null && lng in -180.0..180.0) {
+            "请输入有效的纬度（-90 至 90）和经度（-180 至 180）"
+        }
+        require(system == "GCJ02" || system == "WGS84") { "请选择 GCJ02 或 WGS84 坐标系" }
+        return XatuCheckinLocation(enabled, lat, lng, system)
+    }
+
     fun toWgs84(point: XatuCoordinate): XatuCoordinate {
         if (point.system.equals("WGS84", true)) return point.copy(system = "WGS84")
         var result = point.copy(system = "WGS84")

@@ -95,6 +95,13 @@ kotlin {
         androidMain.dependencies {
             // MIUIX is Android-only here; keep the common source set platform-neutral.
             implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+            // alpha7 publishes these Compose ABIs via Compose BOM 2026.08.01.
+            // Keep the existing Material3 version instead of importing all BOM constraints.
+            implementation("androidx.compose.ui:ui:1.13.0-alpha02")
+            implementation("androidx.compose.animation:animation:1.13.0-alpha02")
+            implementation("androidx.compose.foundation:foundation:1.13.0-alpha02")
+            implementation(libs.coui.core.get().toString()) { isTransitive = false }
+            implementation(libs.androidx.dynamicanimation)
             implementation(libs.androidx.sqlite.framework)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.webkit)

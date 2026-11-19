@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
+import android.content.ActivityNotFoundException
 import android.net.http.SslError
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
@@ -12,6 +14,13 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.ValueCallback
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,7 +32,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,6 +44,8 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusRepository
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuLocation
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCoordinate
 import org.koin.compose.koinInject
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -49,8 +63,13 @@ class AndroidWebViewController : WebViewController {
     private var nativeBridge: NativeBridge? = null
     private var onProgressChange: (Float) -> Unit = {}
     private var onTitleChange: (String) -> Unit = {}
+    private var onLoadError: (String?) -> Unit = {}
+    var generation by mutableIntStateOf(0)
+        private set
+    private var recoveryUrl: String? = null
+    @Volatile private var topLevelUrl: String = ""
     private var onSslError: (String, () -> Unit, () -> Unit) -> Unit = { _, _, cancel -> cancel() }
-    private var checkinLocationProvider: () -> String = { "{\"mode\":\"native\"}" }
+    @Volatile private var checkinLocationProvider: () -> String = { "{\"mode\":\"native\"}" }
 
     fun updateBridgeHandler(handler: WebBridgeHandler) {
         nativeBridge?.handler = handler
@@ -62,15 +81,29 @@ class AndroidWebViewController : WebViewController {
 
     fun checkinLocation(): String = checkinLocationProvider()
 
-    fun isCheckinPage(): Boolean = currentUrl.startsWith("https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/")
+    fun isCheckinPage(): Boolean = topLevelUrl.startsWith("https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/")
+
+    fun pageStarted(url: String) { topLevelUrl = url; recoveryUrl = null }
+    fun restoreUrl(fallback: String): String = recoveryUrl ?: fallback
+    fun rendererGone(view: WebView) {
+        recoveryUrl = topLevelUrl
+        (view.parent as? ViewGroup)?.removeView(view)
+        if (webViewInstance === view) webViewInstance = null
+        nativeBridge = null
+        view.destroy()
+        reportProgress(1f)
+        reportLoadError("网页已停止响应")
+    }
 
     fun updateCallbacks(
         onProgressChange: (Float) -> Unit,
         onTitleChange: (String) -> Unit,
+        onLoadError: (String?) -> Unit,
         onSslError: (String, () -> Unit, () -> Unit) -> Unit
     ) {
         this.onProgressChange = onProgressChange
         this.onTitleChange = onTitleChange
+        this.onLoadError = onLoadError
         this.onSslError = onSslError
     }
 
@@ -80,6 +113,7 @@ class AndroidWebViewController : WebViewController {
 
     fun reportProgress(value: Float) = onProgressChange(value)
     fun reportTitle(value: String) = onTitleChange(value)
+    fun reportLoadError(value: String?) = onLoadError(value)
     fun reportSslError(url: String, proceed: () -> Unit, cancel: () -> Unit) = onSslError(url, proceed, cancel)
 
     companion object {
@@ -90,7 +124,7 @@ class AndroidWebViewController : WebViewController {
         get() = webViewInstance?.url ?: ""
 
     override fun reload() {
-        webViewInstance?.reload()
+        if (webViewInstance != null) webViewInstance!!.reload() else generation++
     }
 
     override fun goBack(): Boolean {
@@ -110,15 +144,21 @@ class AndroidWebViewController : WebViewController {
         WebView.setWebContentsDebuggingEnabled(enabled)
     }
 
-    override fun clearSession() {
+    override suspend fun clearSession() {
         webViewInstance?.let { wv ->
+            wv.stopLoading()
             wv.clearCache(true)
             wv.clearHistory()
             wv.clearFormData()
             wv.clearSslPreferences()
+            wv.loadUrl("about:blank")
         }
-        android.webkit.CookieManager.getInstance().removeAllCookies {
-            android.webkit.CookieManager.getInstance().flush()
+        android.webkit.WebStorage.getInstance().deleteAllData()
+        suspendCancellableCoroutine<Unit> { continuation ->
+            android.webkit.CookieManager.getInstance().removeAllCookies {
+                android.webkit.CookieManager.getInstance().flush()
+                continuation.resume(Unit)
+            }
         }
     }
 
@@ -196,16 +236,22 @@ actual fun PlatformWebView(
     bridgeHandler: WebBridgeHandler,
     onProgressChange: (Float) -> Unit,
     onTitleChange: (String) -> Unit,
+    onLoadError: (String?) -> Unit,
+    onPageFinished: (String) -> Unit,
+    resetHistoryOnEntry: Boolean,
     onNavigateToSchedule: () -> Unit,
     onSslError: (failingUrl: String, onProceed: () -> Unit, onCancel: () -> Unit) -> Unit
 ) {
     val androidController = controller as AndroidWebViewController
+    val reportFinished by rememberUpdatedState(onPageFinished)
     val campusRepository: XatuCampusRepository = koinInject()
-    val campusSnapshot by campusRepository.snapshot.collectAsState(initial = com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusSnapshot())
+    val campusSnapshot by campusRepository.snapshot.collectAsState(initial = null)
+    val snapshot = campusSnapshot ?: return
+    val supportsEarlyLocation = remember { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) }
     androidController.updateBridgeHandler(bridgeHandler)
-    androidController.updateCallbacks(onProgressChange, onTitleChange, onSslError)
+    androidController.updateCallbacks(onProgressChange, onTitleChange, onLoadError, onSslError)
     androidController.updateCheckinLocationProvider {
-        val location = campusSnapshot.checkinLocation
+        val location = snapshot.checkinLocation
         if (!location.enabled) "{\"mode\":\"native\"}"
         else {
             val point = XatuLocation.toWgs84(XatuCoordinate(location.latitude, location.longitude, location.system))
@@ -221,6 +267,11 @@ actual fun PlatformWebView(
     var isFirstLaunch by remember { mutableStateOf(true) }
     var pendingLocationOrigin by remember { mutableStateOf<String?>(null) }
     var pendingLocationCallback by remember { mutableStateOf<GeolocationPermissions.Callback?>(null) }
+    var pendingFiles by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        pendingFiles?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        pendingFiles = null
+    }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -271,6 +322,7 @@ actual fun PlatformWebView(
         WebView.setWebContentsDebuggingEnabled(isDevToolsEnabled)
     }
 
+    key(androidController.generation) {
     Box(modifier = modifier) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -298,9 +350,24 @@ actual fun PlatformWebView(
                         androidController.setNativeBridge(bridge)
                         addJavascriptInterface(bridge, "_shiguangNativeBridge")
                         addJavascriptInterface(CheckinLocationBridge(androidController), "XatuCheckinLocation")
+                        if (supportsEarlyLocation) {
+                            WebViewCompat.addDocumentStartJavaScript(this, CHECKIN_LOCATION_SCRIPT, setOf("https://ehall.xatu.edu.cn"))
+                        }
                     }
 
                     val baseChromeClient = object : WebChromeClient() {
+                        override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                            pendingFiles?.onReceiveValue(null)
+                            pendingFiles = callback
+                            try {
+                                filePicker.launch(params.createIntent())
+                            } catch (error: ActivityNotFoundException) {
+                                pendingFiles?.onReceiveValue(null)
+                                pendingFiles = null
+                                androidController.reportLoadError("未找到文件管理器")
+                            }
+                            return true
+                        }
                         override fun onProgressChanged(view: WebView?, newProgress: Int) {
                             androidController.reportProgress(newProgress / 100f)
                         }
@@ -344,21 +411,52 @@ actual fun PlatformWebView(
                     }
 
                     val baseViewClient = object : WebViewClient() {
+                        private var clearEntryHistory = resetHistoryOnEntry
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                            androidController.pageStarted(url.orEmpty())
+                            if (!supportsEarlyLocation && snapshot.checkinLocation.enabled && androidController.isCheckinPage()) {
+                                view?.stopLoading()
+                                androidController.reportProgress(1f)
+                                androidController.reportLoadError("当前 WebView 不支持自定义签到位置")
+                                return
+                            }
+                            androidController.reportLoadError(null)
                             androidController.reportProgress(0.1f)
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
-                            androidController.reportProgress(1.0f)
-                            if (url?.startsWith("https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/") == true) {
-                                view?.evaluateJavascript(CHECKIN_LOCATION_SCRIPT, null)
+                            if (url == "about:blank" || (clearEntryHistory && url != null && url == view?.url)) {
+                                view?.clearHistory()
+                                clearEntryHistory = false
                             }
+                            androidController.reportProgress(1.0f)
+                            android.webkit.CookieManager.getInstance().flush()
+                            if (url != null && url == view?.url) reportFinished(url)
                             view?.evaluateJavascript("document.title") { value ->
                                 val unquoted = value?.trim('"')?.replace("\\\"", "\"")?.trim() ?: ""
                                 if (unquoted.isNotBlank() && unquoted != "null") {
                                     androidController.reportTitle(unquoted)
                                 }
                             }
+                        }
+
+                        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                            if (request.isForMainFrame) {
+                                androidController.reportProgress(1f)
+                                androidController.reportLoadError("网页加载失败：${error.description}")
+                            }
+                        }
+
+                        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                            if (request.isForMainFrame) {
+                                androidController.reportProgress(1f)
+                                androidController.reportLoadError("网页错误：HTTP ${response.statusCode}")
+                            }
+                        }
+
+                        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                            androidController.rendererGone(view)
+                            return true
                         }
 
                         override fun onReceivedSslError(
@@ -381,9 +479,11 @@ actual fun PlatformWebView(
 
                     webViewClient = delegate.wrapWebViewClient(baseViewClient)
 
-                    if (url.isNotBlank() && url != "about:blank") {
+                    val targetUrl = if (existingWebView == null) androidController.restoreUrl(url) else url
+                    if (targetUrl.isNotBlank() && targetUrl != "about:blank") {
                         loadedBaseUrl = url
-                        loadUrl(url)
+                        androidController.pageStarted(targetUrl)
+                        loadUrl(targetUrl)
                     }
                 }
             },
@@ -393,12 +493,19 @@ actual fun PlatformWebView(
             }
         )
     }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
+            pendingFiles?.onReceiveValue(null)
+            pendingFiles = null
+            pendingLocationCallback?.invoke(pendingLocationOrigin, false, false)
+            pendingLocationCallback = null
             (androidController.webViewInstance?.parent as? ViewGroup)?.removeView(androidController.webViewInstance)
 
             android.webkit.CookieManager.getInstance().flush()
+            androidController.updateCallbacks({}, {}, {}, { _, _, cancel -> cancel() })
+            androidController.updateCheckinLocationProvider { "{\"mode\":\"native\"}" }
         }
     }
 }

@@ -8,7 +8,6 @@ import org.jetbrains.compose.resources.stringResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.action_share
-import shiguangschedule.shared.generated.resources.dialog_text_file_saved_share_prompt
 import shiguangschedule.shared.generated.resources.dialog_title_file_saved
 
 /**
@@ -28,7 +27,6 @@ fun ShareDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.dialog_title_file_saved)) },
-        text = { Text(stringResource(Res.string.dialog_text_file_saved_share_prompt)) },
         confirmButton = {
             TextButton(
                 onClick = {

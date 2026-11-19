@@ -14,16 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,60 +82,58 @@ fun SliderWithInputField(
     if (showDialog) {
         var textFieldValue by remember { mutableStateOf(formatValue(value)) }
 
-        AlertDialog(
+        val entered = textFieldValue.toFloatOrNull()
+        UiDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(label) },
+            title = label,
             text = {
                 Column {
-                    Text(
+                    UiText(
                         text = "${stringResource(Res.string.label_range)}: ${formatValue(range.start)} - ${formatValue(range.endInclusive)}",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    OutlinedTextField(
+                    UiInputField(
                         value = textFieldValue,
                         onValueChange = { input ->
-                            if (isIntegerStep) {
-                                if (input.all { it.isDigit() }) textFieldValue = input
-                            } else {
-                                if (input.all { it.isDigit() || it == '.' }) textFieldValue = input
-                            }
+                            if (input.all { it.isDigit() || (!isIntegerStep && it == '.') }) textFieldValue = input
                         },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = if (isIntegerStep) KeyboardType.Number else KeyboardType.Decimal
-                        ),
-                        placeholder = { Text(stringResource(Res.string.placeholder_input_value)) }
+                        keyboardOptions = KeyboardOptions(keyboardType = if (isIntegerStep) KeyboardType.Number else KeyboardType.Decimal),
+                        label = stringResource(Res.string.placeholder_input_value),
                     )
                 }
             },
-            confirmButton = {
-                Button(onClick = {
-                    val newValue = textFieldValue.toFloatOrNull()
-                    if (newValue != null) {
-                        val clampedValue = newValue.coerceIn(range.start, range.endInclusive)
-                        val steppedValue = if (stepValue > 0f) {
-                            val count = ((clampedValue - range.start) / stepValue).roundToInt()
-                            range.start + count * stepValue
-                        } else clampedValue
-
-                        onValueChange(steppedValue.coerceIn(range.start, range.endInclusive))
-                        showDialog = false
-                    }
-                }) {
-                    Text(stringResource(Res.string.action_confirm))
+            confirmButton = UiDialogAction(stringResource(Res.string.action_confirm), {
+                entered?.let { number ->
+                    val clamped = number.coerceIn(range.start, range.endInclusive)
+                    val stepped = if (stepValue > 0f) {
+                        range.start + ((clamped - range.start) / stepValue).roundToInt() * stepValue
+                    } else clamped
+                    onValueChange(stepped.coerceIn(range.start, range.endInclusive))
+                    showDialog = false
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+            }, enabled = entered != null),
+            dismissButton = UiDialogAction(stringResource(Res.string.action_cancel), { showDialog = false }),
         )
     }
 
     Column(modifier = modifier) {
+        if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.COUI) {
+            com.itos.coui.layout.Item(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
+                title = { com.itos.coui.text.Text(text = label, kind = com.itos.coui.text.CouiTextKind.PreferenceTitle) },
+                trailing = { com.itos.coui.text.Text(text = formatValue(value), kind = com.itos.coui.text.CouiTextKind.PreferenceValue,
+                    color = com.itos.coui.theme.CouiTheme.colorScheme.accentOnSurface) },
+                onClick = { showDialog = true },
+            )
+            com.itos.coui.slider.Slider(
+                modifier = Modifier.fillMaxWidth(), value = value, onValueChange = onValueChange,
+                valueRange = range, steps = steps.coerceAtLeast(0),
+            )
+            return@Column
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

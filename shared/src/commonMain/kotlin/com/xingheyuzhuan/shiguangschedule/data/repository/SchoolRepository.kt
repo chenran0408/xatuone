@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import com.xingheyuzhuan.shiguangschedule.data.model.SchoolHistoryModel
+import com.xingheyuzhuan.shiguangschedule.tool.ResourceInitializerManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +31,8 @@ import school_index.SchoolIndex
 @Single
 class SchoolRepository(
     private val fileSystem: FileSystem,
-    @Named("FilesDir") private val filesDir: Path
+    @Named("FilesDir") private val filesDir: Path,
+    private val resourceInitializer: ResourceInitializerManager
 ) {
 
     // 定义需要在一级菜单中显示的教务类别
@@ -55,6 +57,7 @@ class SchoolRepository(
      */
     private suspend fun loadIndex(): SchoolIndex? {
         return withContext(Dispatchers.IO) {
+            resourceInitializer.initializeOfflineRepo().getOrThrow()
             val internalPath = filesDir / "repo/index/school_index.pb"
 
             if (!fileSystem.exists(internalPath)) {

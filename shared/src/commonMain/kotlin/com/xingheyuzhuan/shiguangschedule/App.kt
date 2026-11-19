@@ -1,22 +1,31 @@
 package com.xingheyuzhuan.shiguangschedule
 
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FiniteAnimationSpec
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.metadata
@@ -30,6 +39,7 @@ import com.xingheyuzhuan.shiguangschedule.ui.schedule.WeeklyScheduleScreen
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.list.AdapterSelectionScreen
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.WebViewScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.SettingsScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.CourseToolsScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.SettingsViewModel
 import com.xingheyuzhuan.shiguangschedule.ui.settings.additional.LanguageSettingScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.additional.MoreOptionsScreen
@@ -38,7 +48,13 @@ import com.xingheyuzhuan.shiguangschedule.ui.settings.backup.BackupScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.contribution.ContributionScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.conversion.CourseTableConversionScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuLoginScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuCourseSyncDialog
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.xatuCourseImport
 import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuHomeScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuServicesScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuAcademicScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuSystemSettingsScreen
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuServiceScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.course.AddEditCourseScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.coursemanagement.CourseInstanceListScreen
 import com.xingheyuzhuan.shiguangschedule.ui.settings.coursemanagement.CourseNameListScreen
@@ -68,6 +84,7 @@ fun App() {
         ShiguangScheduleTheme(settings = state.appSettings) {
             val startDest = remember(state.appSettings.startScreen) {
                 when (state.appSettings.startScreen) {
+                    StartScreen.CAMPUS_HOME -> Destination.XatuHome
                     StartScreen.COURSE_SCHEDULE -> Destination.CourseSchedule
                     StartScreen.TODAY_SCHEDULE -> Destination.TodaySchedule
                 }
@@ -89,21 +106,20 @@ fun AppNavigation(startDestination: Destination) {
     val currentDestination = backStack.lastOrNull() as? Destination ?: startDestination
 
     var navHideFraction by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(currentDestination) {
+        if (currentDestination != Destination.CourseSchedule) navHideFraction = 0f
+    }
 
     val pendingFile by ExternalFileManager.pendingFile.collectAsState()
+    var showCourseSync by remember { mutableStateOf(false) }
+    var syncTableId by remember { mutableStateOf<String?>(null) }
 
     val onNavigate: (Destination) -> Unit = remember(backStack) {
         { dest ->
-            if (dest.isMainScreen) {
-                if (backStack.lastOrNull() != dest) {
-                    backStack.clear()
-                    backStack.add(dest)
-                }
-            } else {
-                if (backStack.lastOrNull() != dest) {
-                    backStack.add(dest)
-                }
-            }
+            if (dest == xatuCourseImport) {
+                syncTableId = null
+                showCourseSync = true
+            } else backStack.navigateTo(dest)
         }
     }
 
@@ -118,33 +134,47 @@ fun AppNavigation(startDestination: Destination) {
         {
             if (backStack.size > 1) {
                 backStack.removeAt(backStack.lastIndex)
+            } else if ((backStack.lastOrNull() as? Destination)?.isMainScreen == false) {
+                backStack.navigateTo(Destination.XatuHome)
             }
         }
     }
 
-    val animSpec = tween<IntOffset>(300)
+    val style = LocalUiStyle.current
+    val animSpec: FiniteAnimationSpec<IntOffset> = when (style) {
+        UiStyle.MATERIAL -> tween(300)
+        UiStyle.MIUIX -> spring(dampingRatio = .9f, stiffness = 420f)
+        UiStyle.COUI -> spring(dampingRatio = 1f, stiffness = 320f)
+    }
+    val fadeSpec = when (style) {
+        UiStyle.MATERIAL -> tween<Float>(220)
+        UiStyle.MIUIX -> spring(dampingRatio = .9f, stiffness = 420f)
+        UiStyle.COUI -> tween<Float>(180)
+    }
+    val outgoingDivisor = if (style == UiStyle.COUI) 5 else 3
 
     AdaptiveNavigationScaffold(
         currentDestination = currentDestination,
         onTabSelected = onNavigate,
         showNavigation = currentDestination.isMainScreen,
         navHideFractionProvider = { navHideFraction }
-    ) { _ ->
+    ) { navigationPadding ->
         NavDisplay(
             backStack = backStack,
             onBack = onBack,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(bottom = navigationPadding.calculateBottomPadding())
+                .consumeWindowInsets(navigationPadding),
             transitionSpec = {
-                slideInHorizontally(initialOffsetX = { it }, animationSpec = animSpec) togetherWith
-                        slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = animSpec) + fadeOut()
+                slideInHorizontally(initialOffsetX = { it }, animationSpec = animSpec) + fadeIn(animationSpec = fadeSpec) togetherWith
+                        slideOutHorizontally(targetOffsetX = { -it / outgoingDivisor }, animationSpec = animSpec) + fadeOut(animationSpec = fadeSpec)
             },
             popTransitionSpec = {
-                slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = animSpec) + fadeIn() togetherWith
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = animSpec)
+                slideInHorizontally(initialOffsetX = { -it / outgoingDivisor }, animationSpec = animSpec) + fadeIn(animationSpec = fadeSpec) togetherWith
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = animSpec) + fadeOut(animationSpec = fadeSpec)
             },
             predictivePopTransitionSpec = {
-                slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = animSpec) + fadeIn() togetherWith
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = animSpec)
+                slideInHorizontally(initialOffsetX = { -it / outgoingDivisor }, animationSpec = animSpec) + fadeIn(animationSpec = fadeSpec) togetherWith
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = animSpec) + fadeOut(animationSpec = fadeSpec)
             },
             entryDecorators = listOf(
                 rememberSaveableStateHolderNavEntryDecorator(),
@@ -164,11 +194,32 @@ fun AppNavigation(startDestination: Destination) {
                         targetDest = destination,
                         onNavigate = onNavigate,
                         onBack = onBack,
+                        onLoginComplete = {
+                            if (backStack.lastOrNull() === destination) {
+                                onBack()
+                                (destination as? Destination.WebView)?.courseSyncTableId?.let { tableId ->
+                                    if (backStack.lastOrNull() is Destination.XatuSyncLogin) onBack()
+                                    syncTableId = tableId
+                                    showCourseSync = true
+                                }
+                            }
+                        },
                         onNavHideFractionChanged = { navHideFraction = it }
                     )
                 }
             }
         }
+    }
+
+    if (showCourseSync) {
+        XatuCourseSyncDialog(
+            initialTableId = syncTableId,
+            onDismiss = { showCourseSync = false },
+            onLogin = { loginDestination ->
+                showCourseSync = false
+                onNavigate(loginDestination)
+            }
+        )
     }
 }
 
@@ -177,6 +228,7 @@ fun ScreenContent(
     targetDest: Destination,
     onNavigate: (Destination) -> Unit,
     onBack: () -> Unit,
+    onLoginComplete: () -> Unit,
     onNavHideFractionChanged: (Float) -> Unit
 ) {
     when (targetDest) {
@@ -185,12 +237,23 @@ fun ScreenContent(
             onBack = onBack,
             onNavHideFractionChanged = onNavHideFractionChanged
         )
-        Destination.Settings -> SettingsScreen(onNavigate, onBack)
+        Destination.Settings -> com.xingheyuzhuan.shiguangschedule.ui.settings.SettingsHomeScreen(onNavigate)
+        Destination.CourseSettings -> SettingsScreen(onBack)
+        Destination.CourseStartDateSettings -> SettingsScreen(onBack, openStartDatePicker = true)
+        Destination.CourseTools -> CourseToolsScreen(onNavigate, onBack)
+        Destination.AcademicSettings -> com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuPreferencesScreen(false, onNavigate, onBack)
+        Destination.CampusSettings -> com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.XatuPreferencesScreen(true, onNavigate, onBack)
+        Destination.PrivacySettings -> XatuLoginScreen(onNavigate, onBack)
+        Destination.WebSettings -> XatuSystemSettingsScreen(onBack = onBack)
         Destination.TodaySchedule -> TodayScheduleScreen(onNavigate, onBack)
-        Destination.XatuHome -> XatuHomeScreen(onNavigate, onBack)
+        Destination.XatuHome -> XatuHomeScreen(onNavigate, onBack, PaddingValues(0.dp))
+        Destination.XatuServices -> XatuServicesScreen(onNavigate, onBack)
+        Destination.XatuAcademic -> XatuAcademicScreen(onNavigate)
+        is Destination.XatuService -> XatuServiceScreen(targetDest.page, onNavigate, onBack)
         Destination.ManageCourseTables -> ManageCourseTablesScreen(onBack)
         Destination.CourseTableConversion -> CourseTableConversionScreen(onNavigate, onBack)
         Destination.XatuLogin -> XatuLoginScreen(onNavigate, onBack)
+        is Destination.XatuSyncLogin -> XatuLoginScreen(onNavigate, onBack, targetDest.tableId)
         Destination.NotificationSettings -> NotificationSettingsScreen(onBack)
         Destination.MoreOptions -> MoreOptionsScreen(onNavigate, onBack)
         Destination.OpenSourceLicenses -> OpenSourceLicensesScreen(onBack)
@@ -236,7 +299,9 @@ fun ScreenContent(
             onNavigate, onBack, targetDest.schoolId, targetDest.schoolName, targetDest.categoryNumber, targetDest.resourceFolder
         )
         is Destination.WebView -> WebViewScreen(
-            onNavigate, onBack, targetDest.initialUrl, targetDest.assetJsPath, targetDest.xatuLogin
+            onNavigate, onBack, targetDest.initialUrl, targetDest.assetJsPath, targetDest.xatuLogin,
+            serviceTitle = targetDest.serviceTitle,
+            onLoginComplete = onLoginComplete,
         )
         is Destination.AddEditCourse -> AddEditCourseScreen(
             onBack, targetDest.courseId

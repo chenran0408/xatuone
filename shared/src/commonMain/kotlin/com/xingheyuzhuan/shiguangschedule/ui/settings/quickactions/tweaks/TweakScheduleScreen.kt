@@ -1,5 +1,13 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.quickactions.tweaks
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDatePickerDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,15 +23,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -31,7 +36,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -62,10 +66,8 @@ import shiguangschedule.shared.generated.resources.a11y_arrow
 import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.a11y_save_tweak
 import shiguangschedule.shared.generated.resources.action_cancel
-import shiguangschedule.shared.generated.resources.action_confirm
 import shiguangschedule.shared.generated.resources.action_custom_date
 import shiguangschedule.shared.generated.resources.action_select_table
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.arrow_downward_24px
 import shiguangschedule.shared.generated.resources.arrow_drop_down_24px
 import shiguangschedule.shared.generated.resources.arrow_forward_24px
@@ -82,7 +84,6 @@ import shiguangschedule.shared.generated.resources.label_tweak_to_date
 import shiguangschedule.shared.generated.resources.sync_alt_24px
 import shiguangschedule.shared.generated.resources.text_error
 import shiguangschedule.shared.generated.resources.text_no_course
-import shiguangschedule.shared.generated.resources.text_tweak_hint
 import shiguangschedule.shared.generated.resources.title_tweak_from_course
 import shiguangschedule.shared.generated.resources.title_tweak_schedule
 import shiguangschedule.shared.generated.resources.title_tweak_to_course
@@ -124,7 +125,6 @@ fun TweakScheduleScreen(
     val actionSelectTable = stringResource(Res.string.action_select_table)
     val labelTweakFromDate = stringResource(Res.string.label_tweak_from_date)
     val labelTweakToDate = stringResource(Res.string.label_tweak_to_date)
-    val textTweakHint = stringResource(Res.string.text_tweak_hint)
     val titleTweakFromCourse = stringResource(Res.string.title_tweak_from_course)
     val titleTweakToCourse = stringResource(Res.string.title_tweak_to_course)
     val dialogTitleSelectExportTable = stringResource(Res.string.dialog_title_select_export_table)
@@ -147,25 +147,16 @@ fun TweakScheduleScreen(
         }
     }
 
-    Scaffold(
+    UiScaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(titleTweakSchedule) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = a11yBack
-                        )
-                    }
-                },
+            UiTopAppBar(title = titleTweakSchedule,
+                onBack = onBack,
                 actions = {
-                    IconButton(onClick = { viewModel.moveCourses() }) {
-                        Icon(imageVector = vectorResource(Res.drawable.check_24px), contentDescription = a11ySaveTweak)
+                    UiCourseIconButton(vectorResource(Res.drawable.check_24px), a11ySaveTweak, inToolbar = true) {
+                        viewModel.moveCourses()
                     }
-                }
-            )
+                })
         }
     ) { paddingValues ->
         LazyColumn(
@@ -216,14 +207,6 @@ fun TweakScheduleScreen(
                         }
                     )
                 }
-            }
-
-            item {
-                Text(
-                    text = textTweakHint,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
             }
 
             item {
@@ -303,37 +286,14 @@ fun TweakScheduleScreen(
     }
 
     if (showFromDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = remember(uiState.fromDate) {
-                uiState.fromDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
-            }
-        )
-
-        DatePickerDialog(
+        UiDatePickerDialog(
+            initialDateMillis = uiState.fromDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds(),
             onDismissRequest = { showFromDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { selectedMillis ->
-                            viewModel.onFromDateSelected(selectedMillis.toLocalDate())
-                        }
-                        showFromDatePicker = false
-                    }
-                ) {
-                    Text(stringResource(Res.string.action_confirm))
-                }
+            onConfirm = { millis ->
+                viewModel.onFromDateSelected(millis.toLocalDate())
+                showFromDatePicker = false
             },
-            dismissButton = {
-                TextButton(onClick = { showFromDatePicker = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
-        ) {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false
-            )
-        }
+        )
     }
 
     // 快捷补班选择弹窗
@@ -355,37 +315,14 @@ fun TweakScheduleScreen(
 
     // 原生通用 DatePicker 弹窗
     if (showToDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = remember(uiState.toDate) {
-                uiState.toDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
-            }
-        )
-
-        DatePickerDialog(
+        UiDatePickerDialog(
+            initialDateMillis = uiState.toDate.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds(),
             onDismissRequest = { showToDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { selectedMillis ->
-                            viewModel.onToDateSelected(selectedMillis.toLocalDate())
-                        }
-                        showToDatePicker = false
-                    }
-                ) {
-                    Text(stringResource(Res.string.action_confirm))
-                }
+            onConfirm = { millis ->
+                viewModel.onToDateSelected(millis.toLocalDate())
+                showToDatePicker = false
             },
-            dismissButton = {
-                TextButton(onClick = { showToDatePicker = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
-        ) {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false
-            )
-        }
+        )
     }
 }
 
@@ -493,12 +430,12 @@ fun CourseDisplayCard(title: String, courses: List<CourseWithWeeks>, modifier: M
     val sectionFormatRes = Res.string.course_time_day_section_details_tweak
     val customTimeFormatRes = Res.string.course_time_day_time_details_tweak
 
-    Card(modifier = modifier) {
+    UiCard(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleLarge)
+            UiText(text = title, style = MaterialTheme.typography.titleLarge)
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp)) {
                 if (courses.isEmpty()) {
-                    item { Text(text = textNoCourse, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(8.dp)) }
+                    item { UiText(text = textNoCourse, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(8.dp)) }
                 } else {
                     items(courses) { courseWithWeeks: CourseWithWeeks ->
                         val course = courseWithWeeks.course
@@ -509,8 +446,8 @@ fun CourseDisplayCard(title: String, courses: List<CourseWithWeeks>, modifier: M
                             stringResource(sectionFormatRes, dayString, (course.startSection ?: 0).toString(), (course.endSection ?: 0).toString())
                         }
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                            Text(text = course.name, style = MaterialTheme.typography.bodyLarge)
-                            Text(text = detailsText, style = MaterialTheme.typography.bodySmall)
+                            UiText(text = course.name, style = MaterialTheme.typography.bodyLarge)
+                            UiText(text = detailsText, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -527,8 +464,8 @@ private fun DateButton(label: String, date: LocalDate, onClick: () -> Unit) {
         date.day
     )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = onClick) { Text(text = dateDisplay, style = MaterialTheme.typography.titleMedium) }
+        UiText(text = label, style = MaterialTheme.typography.bodySmall)
+        UiButton(text = dateDisplay, onClick = onClick)
     }
 }
 

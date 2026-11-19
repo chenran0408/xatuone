@@ -1,5 +1,19 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.time
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiLoadingIndicator
+import com.xingheyuzhuan.shiguangschedule.ui.components.CouiDateRangePickerDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiActionButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSettingRow
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiValuePicker
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,8 +29,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,7 +46,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeTable
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeTableComboRule
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.ui.components.ToastManager
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.number
@@ -55,14 +69,14 @@ import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import shiguangschedule.shared.generated.resources.Res
-import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.a11y_delete_rule
 import shiguangschedule.shared.generated.resources.a11y_save
+import shiguangschedule.shared.generated.resources.holiday_picker_hint_select_end
+import shiguangschedule.shared.generated.resources.holiday_picker_hint_select_start
 import shiguangschedule.shared.generated.resources.action_add_time_range_rule
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.action_confirm
 import shiguangschedule.shared.generated.resources.add_24px
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.delete_24px
 import shiguangschedule.shared.generated.resources.dialog_title_select_effective_date_range
 import shiguangschedule.shared.generated.resources.error_name_cannot_be_empty
@@ -128,35 +142,20 @@ fun ComboScheduleEditScreen(
         }
     }
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (comboId == null) stringResource(Res.string.title_add_combo_schedule)
-                        else stringResource(Res.string.title_edit_combo_schedule)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = stringResource(Res.string.a11y_back)
-                        )
-                    }
-                },
+            UiTopAppBar(title = if (comboId == null) stringResource(Res.string.title_add_combo_schedule)
+                        else stringResource(Res.string.title_edit_combo_schedule),
+                onBack = onBack,
                 actions = {
-                    IconButton(
+                    UiCourseIconButton(
+                        icon = vectorResource(Res.drawable.save_24px),
+                        description = stringResource(Res.string.a11y_save),
+                        inToolbar = true,
                         onClick = { viewModel.save() },
                         enabled = !hasOverlapError && isNameValid
-                    ) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.save_24px),
-                            contentDescription = stringResource(Res.string.a11y_save)
-                        )
-                    }
-                }
-            )
+                    )
+                })
         }
     ) { paddingValues ->
         if (!uiState.isDataLoaded) {
@@ -166,9 +165,9 @@ fun ComboScheduleEditScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                UiLoadingIndicator()
             }
-            return@Scaffold
+            return@UiScaffold
         }
 
         LazyColumn(
@@ -181,23 +180,19 @@ fun ComboScheduleEditScreen(
             // 基本信息设置
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    UiInputField(
                         value = uiState.name,
                         onValueChange = viewModel::onNameChange,
-                        label = { Text(stringResource(Res.string.label_combo_schedule_name)) },
-                        placeholder = { Text(stringResource(Res.string.option_unnamed_schedule)) },
+                        label = stringResource(Res.string.label_combo_schedule_name),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        isError = !isNameValid,
-                        supportingText = if (!isNameValid) {
-                            {
-                                Text(
-                                    text = stringResource(Res.string.error_name_cannot_be_empty),
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        } else null
                     )
+                    if (!isNameValid) {
+                        UiText(
+                            stringResource(Res.string.error_name_cannot_be_empty),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
 
                     BaseTableDropdown(
                         selectedBaseId = uiState.baseTimeTableId,
@@ -208,7 +203,7 @@ fun ComboScheduleEditScreen(
             }
 
             item {
-                Text(
+                UiText(
                     text = stringResource(Res.string.title_rule_list_by_date),
                     style = MaterialTheme.typography.titleMedium
                 )
@@ -217,13 +212,11 @@ fun ComboScheduleEditScreen(
             // 无公共作息时，在规则列表上方追加提示卡片
             if (uiState.availablePublicTables.isEmpty()) {
                 item {
-                    Card(
+                    UiCard(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
-                        )
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f),
                     ) {
-                        Text(
+                        UiText(
                             text = noPublicTablesMsg,
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium,
@@ -250,7 +243,8 @@ fun ComboScheduleEditScreen(
             item {
                 val hasPublicTables = uiState.availablePublicTables.isNotEmpty()
 
-                OutlinedButton(
+                UiActionButton(
+                    text = stringResource(Res.string.action_add_time_range_rule),
                     onClick = {
                         if (hasPublicTables) {
                             viewModel.addRule()
@@ -259,14 +253,7 @@ fun ComboScheduleEditScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = vectorResource(Res.drawable.add_24px),
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(Res.string.action_add_time_range_rule))
-                }
+                )
             }
         }
     }
@@ -282,55 +269,23 @@ private fun BaseTableDropdown(
     availableTables: List<TimeTable>,
     onBaseSelected: (String?) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
     val currentTable = availableTables.find { it.id == selectedBaseId }
     val displayText = when {
         selectedBaseId == null -> stringResource(Res.string.option_exclusive_schedule)
         currentTable != null -> currentTable.name ?: stringResource(Res.string.option_unnamed_schedule)
         else -> stringResource(Res.string.option_select_base_schedule)
     }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = displayText,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(Res.string.label_base_schedule)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor(
-                    type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
-                    enabled = true
-                )
-                .fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.option_exclusive_schedule)) },
-                onClick = {
-                    onBaseSelected(null)
-                    expanded = false
-                }
-            )
-
-            availableTables.forEach { table ->
-                DropdownMenuItem(
-                    text = { Text(table.name ?: stringResource(Res.string.option_unnamed_schedule)) },
-                    onClick = {
-                        onBaseSelected(table.id)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
+    val options = listOf(stringResource(Res.string.option_exclusive_schedule)) +
+        availableTables.map { it.name ?: stringResource(Res.string.option_unnamed_schedule) }
+    UiValuePicker(
+        title = stringResource(Res.string.label_base_schedule),
+        values = options,
+        selectedIndex = if (selectedBaseId == null) 0 else availableTables.indexOfFirst { it.id == selectedBaseId } + 1,
+        selectedValue = displayText,
+        onSelect = { index ->
+            onBaseSelected(if (index == 0) null else availableTables[index - 1].id)
+        },
+    )
 }
 
 /**
@@ -345,99 +300,54 @@ private fun RuleEditCard(
     onUpdate: (TimeTableComboRule) -> Unit,
     onDelete: () -> Unit
 ) {
-    var dropdownExpanded by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     val currentTable = availableTables.find { it.id == rule.targetTimeTableId }
     val displayText = currentTable?.name ?: stringResource(Res.string.option_select_schedule_table)
 
-    val dateRangePickerState = rememberDateRangePickerState()
     val isPublicTablesEmpty = availableTables.isEmpty()
+    val currentDateStr = remember {
+        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
+    }
+    val startDateDisplay = rule.startDate.ifBlank { currentDateStr }
+    val endDateDisplay = rule.endDate.ifBlank { currentDateStr }
 
-    Card(
+    UiCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = if (isOverlapError) {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
-            )
-        } else {
-            CardDefaults.cardColors()
-        }
+        containerColor = if (isOverlapError) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+        else Color.Unspecified,
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ExposedDropdownMenuBox(
-                expanded = dropdownExpanded,
-                onExpandedChange = { dropdownExpanded = !dropdownExpanded }
-            ) {
-                OutlinedTextField(
-                    value = displayText,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(Res.string.label_applied_schedule)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
-                    isError = isPublicTablesEmpty,
-                    supportingText = if (isPublicTablesEmpty) {
-                        {
-                            Text(
-                                text = stringResource(Res.string.msg_please_create_public_schedule_first),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    } else null,
-                    modifier = Modifier
-                        .menuAnchor(
-                            type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
-                            enabled = true
-                        )
-                        .fillMaxWidth()
+            UiValuePicker(
+                title = stringResource(Res.string.label_applied_schedule),
+                values = availableTables.map { it.name ?: stringResource(Res.string.option_unnamed_schedule) },
+                selectedIndex = availableTables.indexOfFirst { it.id == rule.targetTimeTableId },
+                selectedValue = displayText,
+                enabled = availableTables.isNotEmpty(),
+                onSelect = { index ->
+                    onUpdate(rule.copy(targetTimeTableId = availableTables[index].id))
+                },
+            )
+            if (isPublicTablesEmpty) {
+                UiText(
+                    text = stringResource(Res.string.msg_please_create_public_schedule_first),
+                    color = MaterialTheme.colorScheme.error,
                 )
-                ExposedDropdownMenu(
-                    expanded = dropdownExpanded,
-                    onDismissRequest = { dropdownExpanded = false }
-                ) {
-                    availableTables.forEach { table ->
-                        DropdownMenuItem(
-                            text = { Text(table.name ?: stringResource(Res.string.option_unnamed_schedule)) },
-                            onClick = {
-                                onUpdate(rule.copy(targetTimeTableId = table.id))
-                                dropdownExpanded = false
-                            }
-                        )
-                    }
-                }
             }
 
             // 日期范围显示与触发选择
-            val currentDateStr = remember {
-                Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
-            }
-            val startDateDisplay = rule.startDate.ifBlank { currentDateStr }
-            val endDateDisplay = rule.endDate.ifBlank { currentDateStr }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showDatePicker = true }
-            ) {
-                OutlinedTextField(
-                    value = "$startDateDisplay - $endDateDisplay",
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = false,
-                    isError = isOverlapError,
-                    label = { Text(stringResource(Res.string.label_effective_date_range)) },
-                    supportingText = if (isOverlapError) {
-                        { Text(stringResource(Res.string.error_rule_date_overlap), color = MaterialTheme.colorScheme.error) }
-                    } else null,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = if (isOverlapError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = if (isOverlapError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = if (isOverlapError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+            UiSettingRow(
+                title = stringResource(Res.string.label_effective_date_range),
+                summary = "$startDateDisplay - $endDateDisplay",
+                onClick = { showDatePicker = true },
+            )
+            if (isOverlapError) {
+                UiText(
+                    stringResource(Res.string.error_rule_date_overlap),
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
 
@@ -445,54 +355,74 @@ private fun RuleEditCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = vectorResource(Res.drawable.delete_24px),
-                        contentDescription = stringResource(Res.string.a11y_delete_rule),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
+                UiCourseIconButton(
+                    icon = vectorResource(Res.drawable.delete_24px),
+                    description = stringResource(Res.string.a11y_delete_rule),
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete,
+                )
             }
         }
     }
 
     if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val startMillis = dateRangePickerState.selectedStartDateMillis
-                        val endMillis = dateRangePickerState.selectedEndDateMillis
-                        if (startMillis != null && endMillis != null) {
-                            val startDateStr = formatMillisToDateStr(startMillis)
-                            val endDateStr = formatMillisToDateStr(endMillis)
-                            onUpdate(rule.copy(startDate = startDateStr, endDate = endDateStr))
-                        }
-                        showDatePicker = false
-                    },
-                    enabled = dateRangePickerState.selectedStartDateMillis != null &&
-                            dateRangePickerState.selectedEndDateMillis != null
-                ) {
-                    Text(stringResource(Res.string.action_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
-        ) {
-            DateRangePicker(
-                state = dateRangePickerState,
-                title = {
-                    Text(
-                        text = stringResource(Res.string.dialog_title_select_effective_date_range),
-                        modifier = Modifier.padding(start = 24.dp, top = 16.dp)
-                    )
+        if (LocalUiStyle.current == UiStyle.COUI) {
+            CouiDateRangePickerDialog(
+                startDate = startDateDisplay,
+                endDate = endDateDisplay,
+                title = stringResource(Res.string.dialog_title_select_effective_date_range),
+                startLabel = stringResource(Res.string.holiday_picker_hint_select_start),
+                endLabel = stringResource(Res.string.holiday_picker_hint_select_end),
+                confirmLabel = stringResource(Res.string.action_confirm),
+                cancelLabel = stringResource(Res.string.action_cancel),
+                onDismiss = { showDatePicker = false },
+                onConfirm = { startDate, endDate ->
+                    onUpdate(rule.copy(startDate = startDate, endDate = endDate))
+                    showDatePicker = false
                 },
-                modifier = Modifier.weight(1f)
             )
+        } else {
+            val dateRangePickerState = rememberDateRangePickerState()
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val startMillis = dateRangePickerState.selectedStartDateMillis
+                            val endMillis = dateRangePickerState.selectedEndDateMillis
+                            if (startMillis != null && endMillis != null) {
+                                onUpdate(
+                                    rule.copy(
+                                        startDate = formatMillisToDateStr(startMillis),
+                                        endDate = formatMillisToDateStr(endMillis),
+                                    )
+                                )
+                            }
+                            showDatePicker = false
+                        },
+                        enabled = dateRangePickerState.selectedStartDateMillis != null &&
+                                dateRangePickerState.selectedEndDateMillis != null
+                    ) {
+                        Text(stringResource(Res.string.action_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) {
+                        Text(stringResource(Res.string.action_cancel))
+                    }
+                }
+            ) {
+                DateRangePicker(
+                    state = dateRangePickerState,
+                    title = {
+                        Text(
+                            text = stringResource(Res.string.dialog_title_select_effective_date_range),
+                            modifier = Modifier.padding(start = 24.dp, top = 16.dp)
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path
@@ -15,6 +17,7 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import shiguangschedule.shared.generated.resources.Res
+import school_index.SchoolIndex
 
 /**
  * 资源与缓存初始化管理器。
@@ -30,6 +33,8 @@ class ResourceInitializerManager(
 ) {
     private val targetRepoDir: Path = filesDir / "repo"
     private val shareTempDir: Path = cacheDir / "share_temp"
+    private val initializationMutex = Mutex()
+    private var initialized = false
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
@@ -45,29 +50,23 @@ class ResourceInitializerManager(
      */
     @OptIn(ExperimentalResourceApi::class)
     suspend fun initializeOfflineRepo(forceOverwrite: Boolean = false): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            if (!forceOverwrite && fileSystem.exists(targetRepoDir / "index")) {
-                return@runCatching
-            }
+        initializationMutex.withLock {
+            runCatching {
+                if (initialized && !forceOverwrite) return@runCatching
 
-            val zipBytes = Res.readBytes("files/offline_schools.zip")
-            val tempZipFile = filesDir / "temp_offline_schools.zip"
+                val zipBytes = Res.readBytes("files/offline_schools.zip")
+                val tempZipFile = filesDir / "temp_offline_schools.zip"
 
-            fileSystem.write(tempZipFile) {
-                write(zipBytes)
-            }
-
-            try {
-                val zipFileSystem = fileSystem.openZip(tempZipFile)
-
-                if (fileSystem.exists(targetRepoDir)) {
-                    fileSystem.deleteRecursively(targetRepoDir)
+                fileSystem.write(tempZipFile) {
+                    write(zipBytes)
                 }
-                fileSystem.createDirectories(targetRepoDir)
 
-                unzipDirectory(zipFileSystem, "/".toPath(), targetRepoDir)
-            } finally {
-                fileSystem.delete(tempZipFile)
+                try {
+                    installOfflineRepo(fileSystem, tempZipFile, targetRepoDir, forceOverwrite)
+                    initialized = true
+                } finally {
+                    fileSystem.delete(tempZipFile)
+                }
             }
         }
     }
@@ -87,37 +86,49 @@ class ResourceInitializerManager(
             if (fileSystem.exists(tempIndexRepo)) fileSystem.deleteRecursively(tempIndexRepo)
         }
     }
+}
 
-    /**
-     * 递归解压 Zip 虚拟文件系统中的目录与文件。
-     */
-    private fun unzipDirectory(
-        zipFileSystem: FileSystem,
-        currentZipPath: Path,
-        targetDir: Path
-    ) {
-        val entries = zipFileSystem.list(currentZipPath)
-        for (entry in entries) {
-            val destinationPath = targetDir / entry.name
+/** Add bundled adapters on upgrades without replacing downloaded scripts or index metadata. */
+internal fun installOfflineRepo(fileSystem: FileSystem, zipPath: Path, targetRepoDir: Path, forceOverwrite: Boolean = false) {
+    if (forceOverwrite && fileSystem.exists(targetRepoDir)) fileSystem.deleteRecursively(targetRepoDir)
+    fileSystem.createDirectories(targetRepoDir)
+    fileSystem.openZip(zipPath).use { zipFileSystem ->
+        fun unzipDirectory(currentZipPath: Path, targetDir: Path) {
+            val entries = zipFileSystem.list(currentZipPath)
+            for (entry in entries) {
+                val destinationPath = targetDir / entry.name
 
-            if (!destinationPath.toString().startsWith(targetDir.toString())) {
-                throw IllegalArgumentException("Illegal zip path: ${entry.name}")
-            }
+                if (!destinationPath.toString().startsWith(targetDir.toString())) {
+                    throw IllegalArgumentException("Illegal zip path: ${entry.name}")
+                }
 
-            val metadata = zipFileSystem.metadata(entry)
+                val metadata = zipFileSystem.metadata(entry)
 
-            if (metadata.isDirectory) {
-                fileSystem.createDirectories(destinationPath)
-                unzipDirectory(zipFileSystem, entry, destinationPath)
-            } else {
-                destinationPath.parent?.let { fileSystem.createDirectories(it) }
+                if (metadata.isDirectory) {
+                    fileSystem.createDirectories(destinationPath)
+                    unzipDirectory(entry, destinationPath)
+                } else if (!fileSystem.exists(destinationPath)) {
+                    destinationPath.parent?.let { fileSystem.createDirectories(it) }
 
-                zipFileSystem.source(entry).use { source ->
-                    fileSystem.sink(destinationPath).buffer().use { sink ->
-                        sink.writeAll(source)
+                    zipFileSystem.source(entry).use { source ->
+                        fileSystem.sink(destinationPath).buffer().use { sink ->
+                            sink.writeAll(source)
+                        }
                     }
                 }
             }
+        }
+        unzipDirectory("/".toPath(), targetRepoDir)
+        val indexPath = targetRepoDir / "index/school_index.pb"
+        val bundled = zipFileSystem.read("/index/school_index.pb".toPath()) { SchoolIndex.ADAPTER.decode(this) }
+        val current = fileSystem.read(indexPath) { SchoolIndex.ADAPTER.decode(this) }
+        val schools = current.schools.map { school ->
+            val additions = bundled.schools.firstOrNull { it.id == school.id }?.adapters.orEmpty()
+                .filter { adapter -> school.adapters.none { it.adapter_id == adapter.adapter_id } }
+            school.copy(adapters = school.adapters + additions)
+        } + bundled.schools.filter { school -> current.schools.none { it.id == school.id } }
+        if (schools != current.schools) {
+            fileSystem.write(indexPath) { write(SchoolIndex.ADAPTER.encode(current.copy(schools = schools))) }
         }
     }
 }

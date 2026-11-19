@@ -37,13 +37,22 @@ actual object CalendarAccountManager : KoinComponent {
         val projection = arrayOf(Calendars._ID)
         val selection = "${Calendars.ACCOUNT_NAME} = ? AND ${Calendars.ACCOUNT_TYPE} = ?"
         val selectionArgs = arrayOf(accountName, ACCOUNT_TYPE)
+        val calendarDisplayName = getString(Res.string.app_name)
 
         val cursor: Cursor? = contentResolver.query(Calendars.CONTENT_URI, projection, selection, selectionArgs, null)
         cursor?.use {
-            if (it.moveToFirst()) return it.getLong(0)
+            if (it.moveToFirst()) {
+                val calendarId = it.getLong(0)
+                contentResolver.update(
+                    ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId),
+                    ContentValues().apply { put(Calendars.CALENDAR_DISPLAY_NAME, calendarDisplayName) },
+                    null,
+                    null
+                )
+                return calendarId
+            }
         }
 
-        val calendarDisplayName = getString(Res.string.app_name)
         val values = ContentValues().apply {
             put(Calendars.ACCOUNT_NAME, accountName)
             put(Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)

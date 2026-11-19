@@ -1,6 +1,6 @@
 <resources>
     <!-- 應用基礎資訊 -->
-    <string name="app_name">拾光課程表</string>
+    <string name="app_name">一校通</string>
 
     <string name="action_confirm">確定</string>
     <string name="action_cancel">取消</string>
@@ -25,10 +25,10 @@
     <string name="notification_live_status_preparing">準備上課</string>
     <string name="notification_unknown_course">未知課程</string>
     <string name="notification_unknown_position">地點未知</string>
-    <string name="widget_name_tiny">超小課程2x1</string>
-    <string name="widget_name_compact">緊湊課程2x2</string>
-    <string name="widget_name_double_days">近日課程4x2</string>
-    <string name="widget_name_list_vertical">垂直列表課表4xN</string>
+    <string name="widget_name_tiny">一校通 · 超小課程2x1</string>
+    <string name="widget_name_compact">一校通 · 緊湊課程2x2</string>
+    <string name="widget_name_double_days">一校通 · 近日課程4x2</string>
+    <string name="widget_name_list_vertical">一校通 · 垂直列表課表4xN</string>
     <string name="widget_tomorrow_course_preview">明日預告</string>
     <string name="widget_no_courses_tomorrow">明天沒有課程</string>
     <string name="widget_today_courses_finished">今日課程已結束</string>
@@ -45,5 +45,5 @@
     <string name="text_no_course">無課程</string>
     <string name="widget_course_remaining_count">剩餘 %1$d 節</string>
 
-    <string name="intent_import_course_table">匯入課表</string>
+    <string name="intent_import_course_table">一校通 · 匯入課表</string>
 </resources>

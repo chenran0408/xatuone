@@ -1,28 +1,23 @@
 package com.xingheyuzhuan.shiguangschedule.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -124,24 +119,19 @@ fun CourseTablePickerDialog(
         }
     }
 
-    AlertDialog(
+    UiDialog(
         onDismissRequest = onDismissRequest,
-        title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall
-            )
-        },
+        title = title,
         text = {
             Column {
                 if (courseTables.isEmpty()) {
-                    Text(
+                    UiText(
                         text = stringResource(Res.string.text_no_course_tables),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
                         contentPadding = PaddingValues(vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -162,68 +152,35 @@ fun CourseTablePickerDialog(
                 }
             }
         },
-        confirmButton = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledIconButton(
-                    onClick = { showAddTableDialog = true },
-                    modifier = Modifier.size(40.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Icon(
-                        imageVector = vectorResource(Res.drawable.add_24px),
-                        contentDescription = stringResource(Res.string.a11y_add_new_table),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.weight(1f))
+        confirmButton = UiDialogAction(text = stringResource(Res.string.action_confirm), onClick = {
+            selectedTable?.let { onTableSelected(it) }
+            onDismissRequest()
+        }, enabled = selectedTable != null),
+        neutralButton = UiDialogAction(text = stringResource(Res.string.action_add), onClick = { showAddTableDialog = true }),
+        dismissButton = UiDialogAction(text = stringResource(Res.string.action_cancel), onClick = onDismissRequest)
 
-                TextButton(
-                    onClick = onDismissRequest,
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-                Button(
-                    onClick = {
-                        selectedTable?.let { onTableSelected(it) }
-                        onDismissRequest()
-                    },
-                    enabled = selectedTable != null
-                ) {
-                    Text(stringResource(Res.string.action_confirm))
-                }
-            }
-        },
-        dismissButton = null
     )
 
     if (showAddTableDialog) {
         val toastAddSuccess = stringResource(Res.string.toast_add_table_success, newTableName)
         val toastNameEmpty = stringResource(Res.string.toast_name_empty)
 
-        AlertDialog(
+        UiDialog(
             onDismissRequest = {
                 showAddTableDialog = false
                 newTableName = ""
             },
-            title = { Text(stringResource(Res.string.dialog_title_add_table)) },
+            title = stringResource(Res.string.dialog_title_add_table),
             text = {
-                OutlinedTextField(
+                UiInputField(
                     value = newTableName,
                     onValueChange = { newTableName = it },
-                    label = { Text(stringResource(Res.string.label_table_name)) },
+                    label = stringResource(Res.string.label_table_name),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
             },
-            confirmButton = {
-                Button(onClick = {
+            confirmButton = UiDialogAction(text = stringResource(Res.string.action_add), onClick = {
                     if (newTableName.isNotBlank()) {
                         deps.createNewCourseTable(newTableName)
 
@@ -235,18 +192,11 @@ fun CourseTablePickerDialog(
                     } else {
                         ToastManager.show(toastNameEmpty)
                     }
-                }) {
-                    Text(stringResource(Res.string.action_add))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
+                }),
+            dismissButton = UiDialogAction(text = stringResource(Res.string.action_cancel), onClick = {
                     showAddTableDialog = false
                     newTableName = ""
-                }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+                })
         )
     }
 }
@@ -258,18 +208,11 @@ fun CourseTablePickerCard(
     isCurrentActive: Boolean,
     onCardClick: (CourseTable) -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCardClick(courseTable) },
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isSelected -> MaterialTheme.colorScheme.primaryContainer
-                isCurrentActive -> MaterialTheme.colorScheme.tertiaryContainer
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        ),
-        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+    UiSelectionCard(
+        selected = isSelected,
+        highlighted = isCurrentActive,
+        onClick = { onCardClick(courseTable) },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
@@ -279,28 +222,28 @@ fun CourseTablePickerCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = courseTable.name, style = MaterialTheme.typography.titleMedium)
-                Text(
+                UiText(text = courseTable.name, style = MaterialTheme.typography.titleMedium)
+                UiText(
                     text = stringResource(
                         Res.string.course_table_id_prefix,
                         courseTable.id.take(8) + "..."
                     ),
                     style = MaterialTheme.typography.bodySmall
                 )
-                Text(
+                UiText(
                     text = stringResource(
                         Res.string.course_table_created_at_prefix,
                         formatEpochMillis(courseTable.createdAt)
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    color = uiStyleColors().secondaryText.copy(alpha = 0.7f)
                 )
             }
             if (isCurrentActive) {
-                Text(
+                UiText(
                     stringResource(Res.string.label_current),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = uiStyleColors().accent
                 )
             }
         }

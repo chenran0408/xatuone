@@ -12,6 +12,13 @@ import okio.buffer
 import okio.use
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
+import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
+
+internal const val XATU_ALL_GRADES = "all-grades"
+
+data class XatuPlanUpdate(val snapshot: XatuAcademicSnapshot, val warning: String?)
 
 @Single
 class XatuAcademicRepository(
@@ -37,31 +44,54 @@ class XatuAcademicRepository(
     suspend fun refreshGrades(account: String, semesterId: String): XatuAcademicSnapshot = mutex.withLock {
         load()
         val current = snapshots["$account|$semesterId"] ?: XatuAcademicSnapshot(account, semesterId)
-        service.grades(semesterId).let { current.copy(grades = it) }.also {
+        val grades = if (semesterId == XATU_ALL_GRADES) service.allGrades() else service.grades(semesterId)
+        current.copy(grades = grades, fetchedAt = System.currentTimeMillis()).also {
             snapshots["$account|$semesterId"] = it
             save()
         }
     }
+
+    suspend fun officialWeek(): Int? = service.officialWeek()
+
+    suspend fun currentSemesterId(semesters: List<XatuSemester>): String = XatuAcademicParser.currentSemesterId(
+        semesters,
+        checkNotNull(service.officialWeek()) { "教务首页未返回当前教学周，请手动选择学期" },
+        LocalDate.now(ZoneOffset.ofHours(8))
+    )
 
     suspend fun refreshExams(account: String, semesterId: String): XatuAcademicSnapshot = mutex.withLock {
         load()
         val current = snapshots["$account|$semesterId"] ?: XatuAcademicSnapshot(account, semesterId)
-        service.exams(semesterId).let { current.copy(exams = it) }.also {
+        service.exams(semesterId).let { current.copy(exams = it, fetchedAt = System.currentTimeMillis()) }.also {
             snapshots["$account|$semesterId"] = it
             save()
         }
     }
 
-    suspend fun refreshPlan(account: String): XatuAcademicSnapshot = mutex.withLock {
+    suspend fun refreshPlan(account: String): XatuPlanUpdate = mutex.withLock {
         load()
         val key = "$account|all"
         val current = snapshots[key] ?: XatuAcademicSnapshot(account, "all")
         val plan = service.plan()
-        val catalog = service.catalog()
-        current.copy(plan = plan, catalog = catalog).also {
+        var warning: String? = null
+        val catalog = try {
+            service.catalog()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            warning = "培养方案读取失败：${error.message}"
+            current.catalog
+        }
+        val updated = current.copy(plan = plan, catalog = catalog, fetchedAt = System.currentTimeMillis()).also {
             snapshots[key] = it
             save()
         }
+        XatuPlanUpdate(updated, warning)
+    }
+
+    suspend fun loadAccountCache(account: String): XatuAcademicCacheFile = mutex.withLock {
+        load()
+        XatuAcademicCacheFile(semesters, snapshots.values.filter { it.account == account })
     }
 
     suspend fun loadCached(account: String, semesterId: String): XatuAcademicSnapshot? = mutex.withLock {
@@ -93,8 +123,10 @@ class XatuAcademicRepository(
         fileSystem.createDirectories(cachePath.parent!!)
         val value = XatuAcademicCacheFile(semesters, snapshots.values.toList())
         val encrypted = crypto.encrypt(json.encodeToString(value)) ?: error("学术缓存加密失败")
-        fileSystem.sink(cachePath).buffer().use {
+        val temporary = cachePath.parent!! / "academic_cache.json.tmp"
+        fileSystem.sink(temporary).buffer().use {
             it.writeUtf8(json.encodeToString(EncryptedAcademicCache(encrypted.encryptedData, encrypted.iv)))
         }
+        fileSystem.atomicMove(temporary, cachePath)
     }
 }

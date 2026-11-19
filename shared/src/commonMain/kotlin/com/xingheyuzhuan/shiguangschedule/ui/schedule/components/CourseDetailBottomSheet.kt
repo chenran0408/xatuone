@@ -13,7 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSettingRow
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -23,9 +29,8 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -37,6 +42,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -65,6 +74,7 @@ import shiguangschedule.shared.generated.resources.calendar_today_24px
 import shiguangschedule.shared.generated.resources.class_24px
 import shiguangschedule.shared.generated.resources.edit_24px
 import shiguangschedule.shared.generated.resources.label_section_range_suffix
+import shiguangschedule.shared.generated.resources.label_credit
 import shiguangschedule.shared.generated.resources.location_on_24px
 import shiguangschedule.shared.generated.resources.person_24px
 import shiguangschedule.shared.generated.resources.schedule_24px
@@ -80,6 +90,7 @@ import kotlin.math.roundToInt
 private data class CourseDetailUIModel(
     val id: String,
     val name: String,
+    val number: String?,
     val teacher: String,
     val position: String,
     val weeksDisplayStr: String,
@@ -120,7 +131,8 @@ fun CourseDetailBottomSheet(
             }
             CourseDetailUIModel(
                 id = course.id,
-                name = course.name,
+                name = com.xingheyuzhuan.shiguangschedule.ui.schedule.courseDisplayName(course.name).title,
+                number = com.xingheyuzhuan.shiguangschedule.ui.schedule.courseDisplayName(course.name).number,
                 teacher = course.teacher,
                 position = course.position,
                 weeksDisplayStr = formatWeeks(wrapper.weeks.map { it.weekNumber }, singleLabel, doubleLabel),
@@ -146,7 +158,7 @@ fun CourseDetailBottomSheet(
     }
 
     val density = LocalDensity.current
-    val pageHeights = remember(block) { mutableStateMapOf<Int, Dp>() }
+    val pageHeights = remember(block, density, LocalUiStyle.current) { mutableStateMapOf<Int, Dp>() }
 
     val dynamicHeightModifier = Modifier
         .fillMaxWidth()
@@ -165,6 +177,7 @@ fun CourseDetailBottomSheet(
             if (currentHeight != null && targetHeight != null) {
                 val height = lerp(currentHeight, targetHeight, abs(offset))
                 val heightPx = with(density) { height.roundToPx() }
+                    .coerceIn(constraints.minHeight, constraints.maxHeight)
                 val placeable = measurable.measure(constraints.copy(minHeight = heightPx, maxHeight = heightPx))
                 layout(placeable.width, placeable.height) {
                     placeable.placeRelative(0, 0)
@@ -186,16 +199,17 @@ fun CourseDetailBottomSheet(
     val noteIcon = vectorResource(Res.drawable.sticky_note_2_24px)
     val editIcon = vectorResource(Res.drawable.edit_24px)
     val editA11yText = stringResource(Res.string.a11y_edit)
+    val isCoui = LocalUiStyle.current == UiStyle.COUI
 
-    ModalBottomSheet(
+    UiSheet(
         onDismissRequest = onDismissRequest,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        skipPartiallyExpanded = true,
         sheetGesturesEnabled = false
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 36.dp)
+                .padding(bottom = if (isCoui) 12.dp else 36.dp)
         ) {
             Box(modifier = dynamicHeightModifier) {
                 HorizontalPager(
@@ -207,13 +221,13 @@ fun CourseDetailBottomSheet(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .wrapContentHeight(unbounded = true)
                             .onGloballyPositioned { coordinates ->
                                 val heightDp = with(density) { coordinates.size.height.toDp() }
                                 if (pageHeights[page] != heightDp) {
                                     pageHeights[page] = heightDp
                                 }
                             }
+                            .verticalScroll(rememberScrollState())
                     ) {
                         CourseDetailItemContent(
                             model = uiModels[page],
@@ -237,7 +251,7 @@ fun CourseDetailBottomSheet(
                     pageCount = uiModels.size,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 36.dp, bottom = 0.dp)
+                        .padding(top = if (isCoui) 8.dp else 36.dp)
                 )
             }
         }
@@ -256,8 +270,8 @@ private fun WormPagerIndicator(
     modifier: Modifier = Modifier,
     dotSize: Dp = 6.dp,
     spacing: Dp = 8.dp,
-    activeColor: Color = MaterialTheme.colorScheme.primary,
-    inactiveColor: Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+    activeColor: Color = uiStyleColors().accent,
+    inactiveColor: Color = uiStyleColors().secondaryText.copy(alpha = 0.3f)
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -271,6 +285,17 @@ private fun WormPagerIndicator(
             horizontalArrangement = Arrangement.spacedBy(spacing),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(
+                        pagerState.currentPage.toFloat(), 0f..(pageCount - 1).toFloat(), pageCount - 2
+                    )
+                    setProgress { target ->
+                        scope.launch {
+                            pagerState.animateScrollToPage(target.roundToInt().coerceIn(0, pageCount - 1))
+                        }
+                        true
+                    }
+                }
                 .drawWithContent {
                     drawContent()
 
@@ -325,6 +350,7 @@ private fun WormPagerIndicator(
                         }
                     }
                 }
+                .padding(vertical = 21.dp)
         ) {
             repeat(pageCount) { _ ->
                 Box(
@@ -355,22 +381,34 @@ private fun CourseDetailItemContent(
     editA11yText: String,
     onEditClick: (String) -> Unit
 ) {
+    val isCoui = LocalUiStyle.current == UiStyle.COUI
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 16.dp)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(if (isCoui) 0.dp else 16.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(classIcon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(model.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                if (!isCoui) {
+                    Icon(classIcon, null, tint = uiStyleColors().accent, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                UiText(
+                    model.name,
+                    modifier = Modifier.weight(1f).padding(end = if (isCoui) 8.dp else 60.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = uiStyleColors().onSurface,
+                )
+                if (isCoui) UiCourseIconButton(editIcon, editA11yText, tint = uiStyleColors().accent) {
+                    onEditClick(model.id)
+                }
             }
+
+            model.number?.let { DetailItem(classIcon, "课程序号：$it") }
 
             if (model.teacher.isNotBlank()) {
                 DetailItem(personIcon, model.teacher)
@@ -384,20 +422,24 @@ private fun CourseDetailItemContent(
                 DetailItem(calendarIcon, model.weeksDisplayStr)
             }
 
-            DetailItem(scheduleIcon) {
+            if (isCoui) UiSettingRow(
+                title = model.dayStr,
+                summary = model.timeStr,
+                leadingContent = { Icon(scheduleIcon, null, tint = uiStyleColors().secondaryText) },
+            ) else DetailItem(scheduleIcon) {
                 Column {
-                    Text(model.dayStr, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(model.timeStr, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    UiText(model.dayStr, style = MaterialTheme.typography.bodyLarge, color = uiStyleColors().secondaryText)
+                    UiText(model.timeStr, style = MaterialTheme.typography.bodyMedium, color = uiStyleColors().secondaryText.copy(alpha = 0.7f))
                 }
             }
 
-            if (model.credit != null && model.credit > 0f) {
+            if (model.credit != null) {
                 val creditText = if (model.credit % 1f == 0f) {
                     "${model.credit.toInt()}"
                 } else {
                     "${model.credit}"
                 }
-                DetailItem(creditIcon, creditText)
+                DetailItem(creditIcon, "${stringResource(Res.string.label_credit)}：$creditText")
             }
 
             if (!model.remark.isNullOrBlank()) {
@@ -405,12 +447,12 @@ private fun CourseDetailItemContent(
             }
         }
 
-        FilledIconButton(
+        if (!isCoui) FilledIconButton(
             onClick = { onEditClick(model.id) },
-            modifier = Modifier.align(Alignment.TopEnd).size(40.dp),
+            modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
             colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                containerColor = uiStyleColors().accent.copy(alpha = 0.16f),
+                contentColor = uiStyleColors().onSurface
             )
         ) {
             Icon(editIcon, contentDescription = editA11yText, modifier = Modifier.size(20.dp))
@@ -423,8 +465,11 @@ private fun CourseDetailItemContent(
  */
 @Composable
 private fun DetailItem(icon: ImageVector, text: String) {
-    DetailItem(icon = icon) {
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (LocalUiStyle.current == UiStyle.COUI) UiSettingRow(
+        title = text,
+        leadingContent = { Icon(icon, null, tint = uiStyleColors().secondaryText) },
+    ) else DetailItem(icon = icon) {
+        UiText(text, style = MaterialTheme.typography.bodyLarge, color = uiStyleColors().secondaryText)
     }
 }
 
@@ -441,7 +486,7 @@ private fun DetailItem(icon: ImageVector, content: @Composable () -> Unit) {
             Icon(
                 icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                tint = uiStyleColors().secondaryText.copy(alpha = 0.6f),
                 modifier = Modifier.size(20.dp)
             )
         }

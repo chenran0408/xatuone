@@ -1,34 +1,33 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schedule.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.layout.heightIn
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSelectionCard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.title_select_week
+import shiguangschedule.shared.generated.resources.title_current_week
+import shiguangschedule.shared.generated.resources.format_week_display
 
 /**
  * 周选择器底部动作条。
@@ -47,27 +46,19 @@ fun WeekSelectorBottomSheet(
     onWeekSelected: (Int) -> Unit,
     onDismissRequest: () -> Unit
 ) {
-    val gridState = rememberLazyGridState()
+    val firstWeek = selectedWeek?.takeIf { it in 1..totalWeeks }
+        ?: currentWeek?.takeIf { it in 1..totalWeeks }
+        ?: 1
+    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = firstWeek - 1)
 
-    // 默认滚动到当前周
-    LaunchedEffect(currentWeek) {
-        if (currentWeek != null && currentWeek > 0) {
-            // 注意：网格索引同样从 0 开始
-            gridState.animateScrollToItem(currentWeek - 1)
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = rememberModalBottomSheetState()
-    ) {
+    UiSheet(onDismissRequest = onDismissRequest) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
+            UiText(
                 text = stringResource(Res.string.title_select_week),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(16.dp)
@@ -78,7 +69,7 @@ fun WeekSelectorBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
-                columns = GridCells.Adaptive(minSize = 60.dp),
+                columns = GridCells.Adaptive(minSize = maxOf(56.dp, 48.dp * LocalDensity.current.fontScale)),
                 state = gridState,
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -89,32 +80,20 @@ fun WeekSelectorBottomSheet(
                     val isCurrentWeek = weekNumber == currentWeek
                     val isSelectedWeek = weekNumber == selectedWeek
 
-                    // 根据周次状态决定颜色
-                    val backgroundColor = when {
-                        isSelectedWeek -> MaterialTheme.colorScheme.primary
-                        isCurrentWeek -> MaterialTheme.colorScheme.primaryContainer
-                        else -> Color.Transparent
-                    }
-                    val textColor = when {
-                        isSelectedWeek -> MaterialTheme.colorScheme.onPrimary
-                        isCurrentWeek -> MaterialTheme.colorScheme.onPrimaryContainer
-                        else -> MaterialTheme.colorScheme.onSurface
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(32.dp)
-                            .clip(CircleShape)
-                            .background(backgroundColor)
-                            .clickable { onWeekSelected(weekNumber) }
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
+                    val weekLabel = stringResource(Res.string.format_week_display, weekNumber)
+                    val currentLabel = stringResource(Res.string.title_current_week, weekNumber.toString())
+                    UiSelectionCard(
+                        selected = isSelectedWeek,
+                        highlighted = isCurrentWeek,
+                        compact = true,
+                        onClick = { onWeekSelected(weekNumber) },
+                        modifier = Modifier.semantics {
+                            if (isCurrentWeek) stateDescription = currentLabel
+                        }
                     ) {
-                        Text(
-                            text = "$weekNumber",
-                            color = textColor,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(8.dp), contentAlignment = Alignment.Center) {
+                            UiText(text = weekLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

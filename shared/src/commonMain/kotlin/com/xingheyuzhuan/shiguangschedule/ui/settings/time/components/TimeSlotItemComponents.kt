@@ -1,5 +1,6 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.time.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,12 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +18,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import com.xingheyuzhuan.shiguangschedule.ui.components.ToastManager
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -49,10 +50,10 @@ fun DefaultDurationSettings(
     val toastBreakDurationNonNegative = stringResource(Res.string.toast_break_duration_non_negative)
 
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(titleDefaultDurationSettings, style = MaterialTheme.typography.titleMedium)
+        UiText(titleDefaultDurationSettings, style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
+            UiInputField(
                 value = if (defaultClassDuration == 0) "" else defaultClassDuration.toString(),
                 onValueChange = { newValueStr ->
                     val newIntValue = newValueStr.toIntOrNull()
@@ -64,12 +65,13 @@ fun DefaultDurationSettings(
                         ToastManager.show(toastClassDurationPositive)
                     }
                 },
-                label = { Text(labelClassDuration) },
+                label = labelClassDuration,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
                 modifier = Modifier.weight(1f)
             )
             Spacer(modifier = Modifier.width(16.dp))
-            OutlinedTextField(
+            UiInputField(
                 value = if (defaultBreakDuration == -1) "" else defaultBreakDuration.toString(),
                 onValueChange = { newValueStr ->
                     val newIntValue = newValueStr.toIntOrNull()
@@ -81,8 +83,9 @@ fun DefaultDurationSettings(
                         ToastManager.show(toastBreakDurationNonNegative)
                     }
                 },
-                label = { Text(labelBreakDuration) },
+                label = labelBreakDuration,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -97,9 +100,8 @@ fun TimeSlotItem(
 ) {
     val a11yDeleteTimeSlot = stringResource(Res.string.a11y_delete_time_slot)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onEditClick
+    UiCard(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onEditClick),
     ) {
         Row(
             modifier = Modifier
@@ -107,35 +109,34 @@ fun TimeSlotItem(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
+            UiText(
                 text = stringResource(Res.string.time_slot_section_number, timeSlot.number.toString()),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.width(72.dp),
                 maxLines = 1
             )
-            Text(
+            UiText(
                 text = timeSlot.alias ?: "",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = uiStyleColors().accent,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 4.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
+            UiText(
                 text = "${timeSlot.startTime} - ${timeSlot.endTime}",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.End,
-                maxLines = 1,
-                softWrap = false
+                maxLines = 1
             )
-            IconButton(onClick = onDeleteClick) {
-                Icon(
-                    imageVector = vectorResource(Res.drawable.delete_24px),
-                    contentDescription = a11yDeleteTimeSlot
-                )
-            }
+            UiCourseIconButton(
+                icon = vectorResource(Res.drawable.delete_24px),
+                description = a11yDeleteTimeSlot,
+                tint = MaterialTheme.colorScheme.error,
+                onClick = onDeleteClick,
+            )
         }
     }
 }

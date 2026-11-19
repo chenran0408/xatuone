@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.jsoup.Jsoup
+import java.time.LocalDate
+
+class XatuParseFailure(message: String) : IllegalStateException(message)
 
 @Serializable
 data class XatuExam(
@@ -111,6 +114,21 @@ fun decodeAcademicCache(raw: String, decrypt: (String, String) -> String?): Xatu
 }
 
 object XatuAcademicParser {
+    private fun knownEmpty(html: String): Boolean {
+        val text = Jsoup.parse(html).text()
+        return listOf("没有考试安排", "暂无考试", "没有查询到", "未查询到", "没有符合条件", "暂无成绩", "无符合条件", "暂无数据", "没有数据", "无数据").any { it in text }
+    }
+
+    fun currentSemesterId(semesters: List<XatuSemester>, week: Int, today: LocalDate): String {
+        val start = today.minusDays((today.dayOfWeek.value - 1).toLong()).minusWeeks((week - 1).toLong())
+        val autumn = start.monthValue >= 7
+        val year = start.year - if (autumn) 0 else 1
+        val termNames = if (autumn) setOf("1", "秋季学期") else setOf("2", "春季学期")
+        return checkNotNull(semesters.firstOrNull {
+            it.name.startsWith("$year-${year + 1}学年") && it.name.substringAfter("学年").trim() in termNames
+        }) { "教务列表中未找到当前学期，请手动选择学期" }.id
+    }
+
     fun semesters(html: String): List<XatuSemester> {
         val records = Regex("""\{[^{}]*\}""").findAll(html).mapNotNull { match ->
             fun field(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
@@ -133,7 +151,7 @@ object XatuAcademicParser {
     fun exams(html: String): List<XatuExam> {
         val table = XatuHtmlTable.find(html) { h ->
             h.any { "课程名称" in it || "科目" in it } && h.any { "时间" in it || "日期" in it || "考场" in it }
-        } ?: return emptyList()
+        } ?: return if (knownEmpty(html)) emptyList() else throw XatuParseFailure("未识别到考试表，已保留原有缓存")
         fun col(vararg words: String) = table.header.indexOfFirst { words.any { word -> word in it } }
         val courseCol = col("课程名称", "科目")
         val timeCol = col("考试时间", "时间")
@@ -157,7 +175,7 @@ object XatuAcademicParser {
         val summary = summary(html)
         val table = XatuHtmlTable.find(html) { h ->
             h.any { "课程名称" in it || "科目" in it } && (h.any { "成绩" in it || "绩点" in it } || (h.any { it.trim() == "学期" || it.trim() == "学年学期" } && h.any { "学分" in it }))
-        } ?: return XatuGradePage(emptyList(), summary)
+        } ?: return if (knownEmpty(html)) XatuGradePage(emptyList(), summary) else throw XatuParseFailure("未识别到成绩表，已保留原有缓存")
         fun col(vararg words: String) = table.header.indexOfFirst { words.any { word -> word in it } }
         val scoreCol = col("总评", "最终").takeIf { it >= 0 } ?: table.header.indexOfFirst { it == "成绩" || it == "总成绩" }
         val creditCol = table.header.indexOfFirst { "学分" in it && "绩点" !in it }
@@ -177,7 +195,14 @@ object XatuAcademicParser {
     }
 
     fun summary(html: String): XatuGradeSummary {
-        val text = org.jsoup.Jsoup.parse(html).text()
+        val totals = XatuHtmlTable.find(html) { h -> "门数" in h && "总学分" in h && "平均绩点" in h }
+            ?.rows?.firstOrNull { it.firstOrNull() == "在校汇总" }
+        if (totals != null) {
+            return XatuGradeSummary(totals[1].toIntOrNull(), totals[2].toDoubleOrNull(), totals[3].toDoubleOrNull())
+        }
+        val doc = Jsoup.parse(html)
+        doc.select("table").remove()
+        val text = doc.text()
         fun number(vararg labels: String): Double? = labels.firstNotNullOfOrNull { label ->
             Regex("${Regex.escape(label)}[:：\\s]*([0-9]+(?:\\.[0-9]+)?)").find(text)?.groupValues?.get(1)?.toDoubleOrNull()
         }

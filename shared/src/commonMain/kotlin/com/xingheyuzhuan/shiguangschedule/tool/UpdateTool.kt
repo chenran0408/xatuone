@@ -4,18 +4,19 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
 
-enum class UpdatePlatform(val title: String) {
-    GITEE("Gitee 镜像 (推荐)"),
-    GITHUB("GitHub 官方")
+enum class UpdatePlatform {
+    GITHUB
 }
 
 sealed class UpdateStatus {
@@ -27,7 +28,10 @@ sealed class UpdateStatus {
     ) : UpdateStatus()
 
     data class Latest(val currentVersion: String) : UpdateStatus()
+    data object NoRelease : UpdateStatus()
     data class Error(val message: String) : UpdateStatus()
+    data object DownloadQueued : UpdateStatus()
+    data class DownloadFailed(val message: String) : UpdateStatus()
     data object NotSupported : UpdateStatus()
     data object Checking : UpdateStatus()
     data object Idle : UpdateStatus()
@@ -50,6 +54,7 @@ data class ApiAsset(
 expect object PlatformUpdateStrategy {
     val isUpdateSupported: Boolean
     fun parseTargetUrl(response: ApiReleaseResponse): String?
+    fun downloadApk(url: String): String?
     fun openUrl(url: String)
 }
 
@@ -61,8 +66,7 @@ class UpdateChecker(
     private val httpClient: HttpClient = defaultHttpClient
 ) {
     companion object {
-        private const val GITHUB_REPO = "XingHeYuZhuan/shiguangschedule"
-        private const val GITEE_REPO = "XingHeYuZhuan-gh/shiguangschedule"
+        private const val GITHUB_REPO = "chenran0408/xatuone"
 
         val defaultHttpClient by lazy {
             HttpClient {
@@ -87,13 +91,20 @@ class UpdateChecker(
         try {
             val apiUrl = when (platform) {
                 UpdatePlatform.GITHUB -> "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-                UpdatePlatform.GITEE -> "https://gitee.com/api/v5/repos/$GITEE_REPO/releases/latest"
             }
 
-            val response = httpClient.get(apiUrl).body<ApiReleaseResponse>()
+            val httpResponse = httpClient.get(apiUrl)
+            if (httpResponse.status.value == 404) {
+                return@withContext UpdateStatus.NoRelease
+            }
+            if (!httpResponse.status.isSuccess()) {
+                return@withContext UpdateStatus.Error("HTTP ${httpResponse.status.value}")
+            }
+
+            val response = httpResponse.body<ApiReleaseResponse>()
 
             if (response.tagName.isBlank()) {
-                return@withContext UpdateStatus.Error("远程数据异常，请更换仓库重试")
+                return@withContext UpdateStatus.Error("发布信息缺少版本号")
             }
 
             val latestVersion = response.tagName.removePrefix("v").removePrefix("V").trim()
@@ -110,11 +121,10 @@ class UpdateChecker(
             } else if (response.tagName.isNotEmpty()) {
                 val fallbackTagUrl = when (platform) {
                     UpdatePlatform.GITHUB -> "https://github.com/$GITHUB_REPO/releases/tag/${response.tagName}"
-                    UpdatePlatform.GITEE -> "https://gitee.com/$GITEE_REPO/releases/tag/${response.tagName}"
                 }
                 Pair(fallbackTagUrl, false)
             } else {
-                return@withContext UpdateStatus.Error("远程数据异常，请更换仓库重试")
+                return@withContext UpdateStatus.Error("发布信息没有可用的下载地址")
             }
 
             UpdateStatus.Found(
@@ -124,8 +134,10 @@ class UpdateChecker(
                 isDirectDownload = isDirectDownload
             )
 
-        } catch (_: Exception) {
-            UpdateStatus.Error("远程数据异常，请更换仓库重试")
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            UpdateStatus.Error(exception.message ?: "请求失败")
         }
     }
 
@@ -146,7 +158,12 @@ class UpdateChecker(
         return false
     }
 
-    fun launchUpdate(targetUrl: String) {
+    fun downloadUpdate(targetUrl: String): UpdateStatus {
+        val error = PlatformUpdateStrategy.downloadApk(targetUrl)
+        return if (error == null) UpdateStatus.DownloadQueued else UpdateStatus.DownloadFailed(error)
+    }
+
+    fun openReleasePage(targetUrl: String) {
         PlatformUpdateStrategy.openUrl(targetUrl)
     }
 }

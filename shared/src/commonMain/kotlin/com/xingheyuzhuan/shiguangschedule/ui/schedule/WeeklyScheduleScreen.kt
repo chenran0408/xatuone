@@ -1,32 +1,49 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schedule
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.*
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
+import com.xingheyuzhuan.shiguangschedule.ui.theme.LocalIsDarkTheme
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiActionButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSelectionCard
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.xingheyuzhuan.shiguangschedule.ui.today.TodayScheduleScreen
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.xatuCourseImport
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -38,8 +55,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -73,11 +94,12 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
+import shiguangschedule.shared.generated.resources.text_no_courses_this_week
 import shiguangschedule.shared.generated.resources.action_select_table
-import shiguangschedule.shared.generated.resources.arrow_drop_down_24px
 import shiguangschedule.shared.generated.resources.format_week_display
 import shiguangschedule.shared.generated.resources.snackbar_add_course_within_semester
 import shiguangschedule.shared.generated.resources.swap_horiz_24px
+import shiguangschedule.shared.generated.resources.tune_24px
 import shiguangschedule.shared.generated.resources.title_current_week
 import shiguangschedule.shared.generated.resources.title_semester_not_set
 import shiguangschedule.shared.generated.resources.title_vacation
@@ -95,8 +117,9 @@ fun WeeklyScheduleScreen(
     viewModel: WeeklyScheduleViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var dayMode by rememberSaveable { mutableStateOf(false) }
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalIsDarkTheme.current
     LaunchedEffect(isDark) {
         viewModel.updateDarkTheme(isDark)
     }
@@ -138,8 +161,17 @@ fun WeeklyScheduleScreen(
     var isGridHolding by remember { mutableStateOf(false) }
     var selectedBlockForDetail by remember { mutableStateOf<MergedCourseBlock?>(null) }
 
-    val composedStyle by remember(uiState.style) {
-        derivedStateOf { with(ScheduleGridStyleComposed) { uiState.style.toComposedStyle() } }
+    val systemFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val composedStyle by remember(uiState.style, systemFontScale) {
+        derivedStateOf {
+            with(ScheduleGridStyleComposed) { uiState.style.toComposedStyle() }.let {
+                it.copy(
+                    timeColumnWidth = it.timeColumnWidth * systemFontScale,
+                    dayHeaderHeight = it.dayHeaderHeight * systemFontScale,
+                    sectionHeight = it.sectionHeight * systemFontScale,
+                )
+            }
+        }
     }
 
     val floatingCourse = uiState.floatingCourse
@@ -162,10 +194,8 @@ fun WeeklyScheduleScreen(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val gridScrollState = rememberScrollState()
 
-    val customTextColor = composedStyle.pageTextColor ?: MaterialTheme.colorScheme.onSurface
+    val customTextColor = composedStyle.pageTextColor ?: uiStyleColors().onSurface
     val customSubTextColor = customTextColor.copy(alpha = 0.7f)
 
     val (displayTitle, titleTextColor) = when {
@@ -183,17 +213,18 @@ fun WeeklyScheduleScreen(
         }
     }
 
-    val collapseFraction = scrollBehavior.state.collapsedFraction
-    val navHideFraction = if (floatingCourse != null) 1f else collapseFraction
+    val navHideFraction = if (!dayMode && floatingCourse != null) 1f else 0f
 
     LaunchedEffect(navHideFraction) {
         onNavHideFractionChanged(navHideFraction)
     }
 
-    val systemNavigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val dynamicBottomOffset = systemNavigationBarInset + (88.dp * (1f - navHideFraction))
+    val windowSize = LocalWindowInfo.current.containerSize
+    val shortLandscape = with(LocalDensity.current) { windowSize.width > windowSize.height && windowSize.height.toDp() < 480.dp }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(
+        if (uiState.wallpaperPath == null) uiStyleColors().background else Color.Transparent
+    )) {
         uiState.wallpaperPath?.let { path ->
             AsyncImage(
                 model = path,
@@ -203,73 +234,134 @@ fun WeeklyScheduleScreen(
             )
         }
 
-        Scaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        UiScaffold(
+            modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clickable {
-                                    if (!uiState.isSemesterSet || uiState.semesterStartDate == null) {
-                                        onNavigate(Destination.Settings)
-                                    } else {
-                                        showWeekSelector = true
+                    Column(Modifier.uiContentWidth()) {
+                        UiTopAppBar(title = if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) displayTitle else "$displayTitle ▾", titleColor = titleTextColor, containerColor = Color.Transparent, onTitleClick = {
+                            if (!uiState.isSemesterSet || uiState.semesterStartDate == null) onNavigate(Destination.CourseStartDateSettings)
+                            else showWeekSelector = true
+                        }, actions = {
+                            UiCourseIconButton(
+                                vectorResource(Res.drawable.swap_horiz_24px),
+                                stringResource(Res.string.action_select_table),
+                                tint = customTextColor,
+                                inToolbar = true,
+                            ) { showTableSwitcher = true }
+                        })
+                        val courseActions: @Composable RowScope.() -> Unit = {
+                            UiActionButton({ onNavigate(xatuCourseImport) }, Modifier.weight(1.15f), text = "同步课表")
+                            if (LocalUiStyle.current != com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MATERIAL) {
+                                UiButton(
+                                    text = "课表设置",
+                                    onClick = { onNavigate(Destination.CourseTools) },
+                                    modifier = Modifier.weight(0.9f),
+                                    selected = false,
+                                    contentColor = uiStyleColors().secondaryText,
+                                )
+                            } else {
+                                UiActionButton({ onNavigate(Destination.CourseTools) }, Modifier.weight(1f), text = "课表设置")
+                            }
+                        }
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MATERIAL) {
+                                val picker: @Composable (Modifier, Boolean) -> Unit = { modifier, compact ->
+                                    SingleChoiceSegmentedButtonRow(modifier) {
+                                        listOf("日视图", "周视图").forEachIndexed { index, label ->
+                                            SegmentedButton(
+                                                selected = dayMode == (index == 0),
+                                                onClick = { dayMode = index == 0 },
+                                                shape = SegmentedButtonDefaults.itemShape(index, 2),
+                                                modifier = if (compact) Modifier.semantics { contentDescription = label } else Modifier,
+                                            ) { Text(if (compact) label.take(1) else label) }
+                                        }
                                     }
                                 }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = displayTitle,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = titleTextColor
-                            )
-                            Icon(
-                                imageVector = vectorResource(Res.drawable.arrow_drop_down_24px),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .offset(y = (-4).dp),
-                                tint = customSubTextColor
-                            )
+                                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                    val inline = maxWidth / systemFontScale >= if (shortLandscape) 300.dp else 320.dp
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (!inline) picker(Modifier.fillMaxWidth(), false)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            if (inline) picker(Modifier.weight(1.55f), true)
+                                            Button(
+                                                { onNavigate(xatuCourseImport) },
+                                                Modifier.weight(1f).then(if (inline) Modifier.semantics { contentDescription = "同步课程表" } else Modifier),
+                                                contentPadding = PaddingValues(horizontal = if (inline) 8.dp else 12.dp),
+                                            ) { Text("同步课表") }
+                                            OutlinedButton(
+                                                { onNavigate(Destination.CourseTools) },
+                                                Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = if (inline) 8.dp else 12.dp),
+                                            ) { Text("课表设置") }
+                                        }
+                                    }
+                                }
+                            } else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) {
+                                val fontScale = LocalDensity.current.fontScale
+                                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                    if (maxWidth / fontScale >= 328.dp) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            MiuixCourseViewTabs(dayMode, { dayMode = it }, Modifier.weight(1.65f))
+                                            UiActionButton({ onNavigate(xatuCourseImport) }, Modifier.weight(1f), text = "同步课表")
+                                            UiCourseIconButton(
+                                                vectorResource(Res.drawable.tune_24px),
+                                                "课表设置",
+                                                tint = uiStyleColors().secondaryText,
+                                                inToolbar = true,
+                                            ) { onNavigate(Destination.CourseTools) }
+                                        }
+                                    } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        MiuixCourseViewTabs(dayMode, { dayMode = it }, Modifier.fillMaxWidth())
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), content = courseActions)
+                                    }
+                                }
+                            } else {
+                                val fontScale = LocalDensity.current.fontScale
+                                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                    if (maxWidth / fontScale >= 334.dp) Row(Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        CouiCourseViewTabs(dayMode, { dayMode = it }, Modifier.weight(1f))
+                                        UiActionButton({ onNavigate(xatuCourseImport) }, Modifier.width(96.dp), text = "同步课表")
+                                        UiCourseIconButton(
+                                            vectorResource(Res.drawable.tune_24px),
+                                            "课表设置",
+                                            tint = uiStyleColors().secondaryText,
+                                        ) { onNavigate(Destination.CourseTools) }
+                                    } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        CouiCourseViewTabs(dayMode, { dayMode = it }, Modifier.fillMaxWidth())
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), content = courseActions)
+                                    }
+                                }
+                            }
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = { showTableSwitcher = true }) {
-                            Icon(
-                                imageVector = vectorResource(Res.drawable.swap_horiz_24px),
-                                contentDescription = stringResource(Res.string.action_select_table),
-                                tint = customTextColor
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-                    scrollBehavior = scrollBehavior
-                )
+                    }
             },
             snackbarHost = {
                 SnackbarHost(
                     hostState = snackbarHostState,
-                    modifier = Modifier.padding(bottom = dynamicBottomOffset)
+                    snackbar = { data ->
+                        if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) MiuixCourseSnackbar(data)
+                        else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.COUI) CouiCourseSnackbar(data)
+                        else androidx.compose.material3.Snackbar(data)
+                    }
                 )
             }
         ) { scaffoldInnerPadding ->
 
-            HorizontalPager(
+            if (dayMode) {
+                Box(Modifier.padding(scaffoldInnerPadding)) {
+                    TodayScheduleScreen(onNavigate, onBack, embedded = true)
+                }
+            } else HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
                     .padding(
                         start = scaffoldInnerPadding.calculateStartPadding(LayoutDirection.Ltr),
                         top = scaffoldInnerPadding.calculateTopPadding(),
-                        end = scaffoldInnerPadding.calculateEndPadding(LayoutDirection.Ltr)
+                        end = scaffoldInnerPadding.calculateEndPadding(LayoutDirection.Ltr),
+                        bottom = scaffoldInnerPadding.calculateBottomPadding()
                     )
                     .fillMaxSize(),
                 beyondViewportPageCount = 1,
@@ -301,7 +393,7 @@ fun WeeklyScheduleScreen(
                 }
 
                 val pageCourses = uiState.courseCache[pageMondayDate.toString()] ?: emptyList()
-                val gridState = rememberScheduleGridState(gridScrollState = gridScrollState)
+                val gridState = rememberScheduleGridState()
 
                 val weekIndex = uiState.weekIndexInPager
                 val totalWeeks = uiState.totalWeeks
@@ -457,13 +549,29 @@ fun WeeklyScheduleScreen(
                     }
                 }
 
-                ScheduleGrid(
-                    state = gridState,
-                    viewState = gridViewState,
-                    actions = gridActions,
-                    style = composedStyle,
-                    modifier = Modifier.padding(bottom = systemNavigationBarInset)
-                )
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    ScheduleGrid(
+                        state = gridState,
+                        viewState = gridViewState,
+                        actions = gridActions,
+                        style = composedStyle,
+                    )
+                    if (uiState.isSemesterSet) {
+                        if (pageMondayDate.toString() !in uiState.courseCache) {
+                            CircularProgressIndicator(
+                                color = uiStyleColors().accent,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        } else if (pageCourses.isEmpty()) {
+                            UiText(
+                                text = stringResource(Res.string.text_no_courses_this_week),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = customSubTextColor,
+                                modifier = Modifier.align(Alignment.Center).padding(16.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -472,7 +580,7 @@ fun WeeklyScheduleScreen(
             onCancelClick = { viewModel.exitFloatingMode() },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp + systemNavigationBarInset)
+                .padding(bottom = 24.dp)
         )
     }
 
@@ -488,6 +596,7 @@ fun WeeklyScheduleScreen(
                 coroutineScope.launch {
                     pagerState.animateScrollToPage(pagerState.currentPage + offset)
                 }
+                dayMode = false
                 showWeekSelector = false
             },
             onDismissRequest = { showWeekSelector = false }

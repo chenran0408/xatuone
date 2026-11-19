@@ -2,7 +2,7 @@
 # 构建与 SDK 版本
 agp = "9.3.1"
 android-compileSdk = "37"
-android-minSdk = "26"
+android-minSdk = "34"
 android-targetSdk = "37"
 kotlin = "2.4.0"
 ksp = "2.3.10"
@@ -25,6 +25,7 @@ datastore = "1.2.1"
 coreKtx = "1.19.0"
 appcompat = "1.8.0"
 activityCompose = "1.13.0"
+dynamicanimation = "1.0.0"
 work-runtime = "2.11.2"
 coreRemoteViews = "1.1.0"
 webkit = "1.17.1"
@@ -42,6 +43,7 @@ koin-plugin = "1.1.0"
 coil = "3.5.0"
 aboutLibraries = "15.0.4"
 kgit = "1.0.3"
+coui = "0.0.1-alpha7"
 
 
 [libraries]
@@ -67,6 +69,7 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-dynamicanimation = { group = "androidx.dynamicanimation", name = "dynamicanimation", version.ref = "dynamicanimation" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-core-remoteviews = { module = "androidx.core:core-remoteviews", version.ref = "coreRemoteViews" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
@@ -109,6 +112,7 @@ okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 kgit = { module = "io.github.xingheyuzhuan:kgit", version.ref = "kgit" }
 aboutlibraries-compose-m3 = { module = "com.mikepenz:aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coui-core = { module = "io.github.itoseo:coui", version.ref = "coui" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDateTime" }
 
 # Koin 依赖注入

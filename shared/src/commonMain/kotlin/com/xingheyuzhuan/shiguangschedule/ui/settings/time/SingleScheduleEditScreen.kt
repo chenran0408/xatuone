@@ -1,5 +1,19 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.time
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiListDivider
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiLoadingIndicator
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
+
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,13 +31,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -114,7 +121,7 @@ fun SingleScheduleEditScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator()
+            UiLoadingIndicator()
         }
         return
     }
@@ -183,34 +190,35 @@ fun SingleScheduleEditScreen(
     val toastSlotModifiedUnsaved = stringResource(Res.string.toast_slot_modified_unsaved)
     val toastSlotAddedUnsaved = stringResource(Res.string.toast_slot_added_unsaved)
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (uiState.isPublic) stringResource(Res.string.title_edit_public_schedule)
-                        else stringResource(Res.string.title_edit_exclusive_schedule)
+            UiTopAppBar(title = if (uiState.isPublic) stringResource(Res.string.title_edit_public_schedule)
+                        else stringResource(Res.string.title_edit_exclusive_schedule),
+                navigationIcon = {
+                    UiCourseIconButton(
+                        icon = vectorResource(Res.drawable.arrow_back_24px),
+                        description = a11yBack,
+                        tint = uiStyleColors().accent,
+                        inToolbar = true,
+                        onClick = handleBackPress,
                     )
                 },
-                navigationIcon = {
-                    IconButton(onClick = handleBackPress) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = a11yBack
-                        )
-                    }
-                },
                 actions = {
-                    IconButton(onClick = {
-                        editingTimeSlot = null
-                        showEditBottomSheet = true
-                    }) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.add_24px),
-                            contentDescription = a11yAddTimeSlot
-                        )
-                    }
-                    IconButton(
+                    UiCourseIconButton(
+                        icon = vectorResource(Res.drawable.add_24px),
+                        description = a11yAddTimeSlot,
+                        tint = uiStyleColors().accent,
+                        inToolbar = true,
+                        onClick = {
+                            editingTimeSlot = null
+                            showEditBottomSheet = true
+                        },
+                    )
+                    UiCourseIconButton(
+                        icon = vectorResource(Res.drawable.save_24px),
+                        description = a11ySaveAllSettings,
+                        tint = uiStyleColors().accent,
+                        inToolbar = true,
                         onClick = {
                             val sortedAndNumberedSlots = localTimeSlots
                                 .sortedBy { parseLocalTimeSafely(it.startTime) }
@@ -228,15 +236,9 @@ fun SingleScheduleEditScreen(
                                 slots = sortedAndNumberedSlots
                             )
                         },
-                        enabled = isNameValid
-                    ) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.save_24px),
-                            contentDescription = a11ySaveAllSettings
-                        )
-                    }
-                }
-            )
+                        enabled = isNameValid,
+                    )
+                })
         }
     ) { paddingValues ->
         LazyColumn(
@@ -247,26 +249,21 @@ fun SingleScheduleEditScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                HorizontalDivider()
+                UiListDivider()
 
                 if (uiState.isPublic) {
-                    OutlinedTextField(
+                    UiInputField(
                         value = localName,
                         onValueChange = { localName = it },
-                        label = { Text(stringResource(Res.string.label_schedule_scheme_name)) },
+                        label = stringResource(Res.string.label_schedule_scheme_name),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 8.dp),
                         singleLine = true,
-                        isError = !isNameValid,
-                        supportingText = if (!isNameValid) {
-                            {
-                                Text(
-                                    text = stringResource(Res.string.error_name_cannot_be_empty),
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        } else null
+                    )
+                    if (!isNameValid) UiText(
+                        text = stringResource(Res.string.error_name_cannot_be_empty),
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
 
@@ -277,7 +274,7 @@ fun SingleScheduleEditScreen(
                     onBreakDurationChange = { newValue -> localDefaultBreakDuration = newValue }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider()
+                UiListDivider()
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (localTimeSlots.isEmpty()) {
@@ -287,7 +284,7 @@ fun SingleScheduleEditScreen(
                             .padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(textNoTimeSlotsHint)
+                        UiText(textNoTimeSlotsHint)
                     }
                 }
             }
@@ -318,7 +315,6 @@ fun SingleScheduleEditScreen(
 
         // 时间段编辑/新增底部弹窗
         if (showEditBottomSheet) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             val isEditing = editingTimeSlot != null
             val (initialStart, initialEnd) = calculateInitialTimes(
                 isEditing = isEditing,
@@ -328,13 +324,7 @@ fun SingleScheduleEditScreen(
                 classDur = localDefaultClassDuration
             )
 
-            ModalBottomSheet(
-                onDismissRequest = {
-                    showEditBottomSheet = false
-                    editingTimeSlot = null
-                },
-                sheetState = sheetState
-            ) {
+            val editor: @Composable (Boolean) -> Unit = { dialogActions ->
                 TimeSlotEditContent(
                     existingTimeSlots = localTimeSlots.toList(),
                     initialNumber = editingTimeSlot?.number ?: (localTimeSlots.maxOfOrNull { it.number }?.plus(1) ?: 1),
@@ -342,6 +332,7 @@ fun SingleScheduleEditScreen(
                     initialEndTime = initialEnd,
                     initialAlias = editingTimeSlot?.alias,
                     isEditing = isEditing,
+                    dialogActions = dialogActions,
                     onDismiss = {
                         showEditBottomSheet = false
                         editingTimeSlot = null
@@ -379,27 +370,39 @@ fun SingleScheduleEditScreen(
                     }
                 )
             }
+
+            if (LocalUiStyle.current == UiStyle.COUI) {
+                editor(true)
+            } else {
+                UiSheet(
+                    skipPartiallyExpanded = true,
+                    onDismissRequest = {
+                        showEditBottomSheet = false
+                        editingTimeSlot = null
+                    },
+                ) {
+                    editor(false)
+                }
+            }
         }
 
         // 放弃修改确认对话框
         if (showExitConfirmDialog) {
-            AlertDialog(
+            UiDialog(
                 onDismissRequest = { showExitConfirmDialog = false },
-                title = { Text(text = stringResource(Res.string.common_dialog_title_abandon_changes)) },
-                text = { Text(text = stringResource(Res.string.common_dialog_msg_unsaved_changes)) },
-                confirmButton = {
-                    TextButton(onClick = {
+                title = stringResource(Res.string.common_dialog_title_abandon_changes),
+                text = { UiText(text = stringResource(Res.string.common_dialog_msg_unsaved_changes)) },
+                confirmButton = UiDialogAction(
+                    text = stringResource(Res.string.common_action_exit_without_save),
+                    onClick = {
                         showExitConfirmDialog = false
                         onBack()
-                    }) {
-                        Text(text = stringResource(Res.string.common_action_exit_without_save))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showExitConfirmDialog = false }) {
-                        Text(text = stringResource(Res.string.common_action_continue_editing))
-                    }
-                }
+                    },
+                ),
+                dismissButton = UiDialogAction(
+                    text = stringResource(Res.string.common_action_continue_editing),
+                    onClick = { showExitConfirmDialog = false },
+                ),
             )
         }
     }

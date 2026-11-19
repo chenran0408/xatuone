@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 
-data class XatuAccount(val studentNumber: String, val loggedIn: Boolean)
+data class XatuAccount(val studentNumber: String, val loggedIn: Boolean, val canRestore: Boolean = loggedIn)
 
 @Single
 class XatuAccountRepository(
@@ -19,24 +19,38 @@ class XatuAccountRepository(
     private val loggedInKey = stringPreferencesKey("logged_in")
 
     val account: Flow<XatuAccount> = dataStore.data.map { preferences ->
+        val studentNumber = preferences[studentNumberKey].orEmpty()
+        val loginStatus = preferences[loggedInKey]
         XatuAccount(
-            studentNumber = preferences[studentNumberKey].orEmpty(),
-            loggedIn = preferences[loggedInKey] == "true"
+            studentNumber = studentNumber,
+            loggedIn = loginStatus == "true",
+            canRestore = studentNumber.isNotBlank() && loginStatus != null,
         )
     }
 
     suspend fun saveStudentNumber(studentNumber: String) {
+        val number = studentNumber.trim()
         dataStore.edit { preferences ->
-            preferences[studentNumberKey] = studentNumber.trim()
+            if (preferences[studentNumberKey] != number) preferences.remove(loggedInKey)
+            preferences[studentNumberKey] = number
         }
     }
 
-    suspend fun markLoggedIn() {
-        dataStore.edit { preferences -> preferences[loggedInKey] = "true" }
+    suspend fun markLoggedIn(studentNumber: String): Boolean {
+        val updated = dataStore.edit { preferences ->
+            if (studentNumber.isNotBlank() && preferences[studentNumberKey] == studentNumber) {
+                preferences[loggedInKey] = "true"
+            }
+        }
+        return updated[studentNumberKey] == studentNumber && updated[loggedInKey] == "true"
     }
 
-    suspend fun markLoggedOut() {
-        dataStore.edit { preferences -> preferences[loggedInKey] = "false" }
+    suspend fun markLoggedOut(studentNumber: String) {
+        dataStore.edit { preferences ->
+            if (preferences[studentNumberKey] == studentNumber && preferences[loggedInKey] == "true") {
+                preferences[loggedInKey] = "false"
+            }
+        }
     }
 
     suspend fun saveLogin(studentNumber: String) {

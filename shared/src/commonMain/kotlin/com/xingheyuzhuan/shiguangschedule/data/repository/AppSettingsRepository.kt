@@ -7,6 +7,7 @@ import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseTableConfig
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseTableConfigDao
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseTableDao
 import com.xingheyuzhuan.shiguangschedule.data.model.AppSettingsModel
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.data.model.schedule_style.ScheduleGridStyleProto
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -161,6 +162,11 @@ class AppSettingsRepository(
         }
     }
 
+    /** 换肤只更新风格键，避免用页面快照覆盖其他设置。 */
+    suspend fun updateUiStyle(style: UiStyle) {
+        dataStore.edit { it[AppSettingsModel.KEY_UI_STYLE] = style.value }
+    }
+
     /**
      * 更新应用设置。
      * 将对象解构并原子化地写入 DataStore。
@@ -177,6 +183,7 @@ class AppSettingsRepository(
             prefs[AppSettingsModel.KEY_SHOW_NON_CURRENT_WEEK_COURSES] = newSettings.showNonCurrentWeekCourses
             prefs[AppSettingsModel.KEY_START_SCREEN] = newSettings.startScreen.value
             prefs[AppSettingsModel.KEY_THEME_MODE] = newSettings.themeMode.value
+            prefs[AppSettingsModel.KEY_UI_STYLE] = newSettings.uiStyle.value
             prefs[AppSettingsModel.KEY_USE_DYNAMIC_COLOR] = newSettings.useDynamicColor
             prefs[AppSettingsModel.KEY_CUSTOM_LIGHT_PRIMARY] = newSettings.customPrimaryColor.light
             prefs[AppSettingsModel.KEY_CUSTOM_DARK_PRIMARY] = newSettings.customPrimaryColor.dark

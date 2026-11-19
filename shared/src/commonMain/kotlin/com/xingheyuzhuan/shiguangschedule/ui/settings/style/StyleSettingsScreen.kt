@@ -1,5 +1,14 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.style
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiLoadingIndicator
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -17,19 +26,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -52,12 +52,14 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xingheyuzhuan.shiguangschedule.Destination
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.tool.FileManagerCallbacks
 import com.xingheyuzhuan.shiguangschedule.tool.rememberFileManager
 import com.xingheyuzhuan.shiguangschedule.ui.components.AdvancedColorPicker
 import com.xingheyuzhuan.shiguangschedule.ui.components.ColorPickerConfig
 import com.xingheyuzhuan.shiguangschedule.ui.components.ImageCropper
 import com.xingheyuzhuan.shiguangschedule.ui.theme.LocalIsDarkTheme
+import com.xingheyuzhuan.shiguangschedule.ui.theme.ProvideUiStyle
 import com.xingheyuzhuan.shiguangschedule.ui.theme.rememberColorScheme
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -76,6 +78,7 @@ fun StyleSettingsScreen(
     viewModel: StyleSettingsViewModel = koinViewModel()
 ) {
     val currentIsDark = LocalIsDarkTheme.current
+    val previewStyle = LocalUiStyle.current
 
     LaunchedEffect(Unit) {
         viewModel.initPreviewDark(currentIsDark)
@@ -95,13 +98,11 @@ fun StyleSettingsScreen(
     var isDarkTarget by remember { mutableStateOf(false) }
     var selectedColorIndex by remember { mutableIntStateOf(0) }
 
-    val sheetState = rememberModalBottomSheetState()
-
     var loadedBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var showCropper by remember { mutableStateOf(false) }
 
     val navigationBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val cardContainerColor = CardDefaults.cardColors().containerColor
+    val cardContainerColor = uiStyleColors().surface
 
     // 图片选择与裁剪管理器
     val fileManager = rememberFileManager(
@@ -137,16 +138,17 @@ fun StyleSettingsScreen(
         )
     }
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(text = stringResource(Res.string.item_personalization), style = MaterialTheme.typography.titleLarge) },
+            UiTopAppBar(title = stringResource(Res.string.item_personalization),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(vectorResource(Res.drawable.arrow_back_24px), contentDescription = stringResource(Res.string.a11y_back))
-                    }
-                }
-            )
+                    UiCourseIconButton(
+                        icon = vectorResource(Res.drawable.arrow_back_24px),
+                        description = stringResource(Res.string.a11y_back),
+                        inToolbar = true,
+                        onClick = onBack,
+                    )
+                })
         }
     ) { paddingValues ->
         val currentStyle = styleState
@@ -170,49 +172,48 @@ fun StyleSettingsScreen(
 
                 CompositionLocalProvider(LocalIsDarkTheme provides isPreviewDark) {
                     MaterialTheme(colorScheme = previewColorScheme) {
-                        Box(
-                            modifier = modifier
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        ) {
+                        ProvideUiStyle(previewStyle, isPreviewDark) {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .horizontalScroll(rememberScrollState())
-                                    .pointerInput(Unit) {
-                                        awaitPointerEventScope {
-                                            while (true) {
-                                                awaitPointerEvent()
+                                modifier = modifier
+                                    .background(uiStyleColors().background)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .horizontalScroll(rememberScrollState())
+                                        .pointerInput(Unit) {
+                                            awaitPointerEventScope {
+                                                while (true) {
+                                                    awaitPointerEvent()
+                                                }
                                             }
                                         }
+                                ) {
+                                    Box(modifier = Modifier.requiredWidth(windowWidthDp)) {
+                                        ScheduleGridContent(
+                                            style = currentStyle,
+                                            demoUiState = demoUiState,
+                                            wallpaperPath = wallpaperPath
+                                        )
                                     }
-                            ) {
-                                Box(modifier = Modifier.requiredWidth(windowWidthDp)) {
-                                    ScheduleGridContent(
-                                        style = currentStyle,
-                                        demoUiState = demoUiState,
-                                        wallpaperPath = wallpaperPath
+                                }
+
+                                // 切换深浅色预览悬浮按钮
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(16.dp)
+                                        .clip(CircleShape)
+                                        .background(uiStyleColors().surface),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    UiCourseIconButton(
+                                        icon = vectorResource(Res.drawable.contrast_24px),
+                                        description = if (isPreviewDark) "预览浅色课表" else "预览深色课表",
+                                        tint = uiStyleColors().accent,
+                                        onClick = { viewModel.setPreviewDark(!isPreviewDark) },
                                     )
                                 }
-                            }
-
-                            // 切换深浅色预览悬浮按钮
-                            FloatingActionButton(
-                                onClick = { viewModel.setPreviewDark(!isPreviewDark) },
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = vectorResource(Res.drawable.contrast_24px),
-                                    contentDescription = null,
-                                    modifier = Modifier.graphicsLayer {
-                                        if (isPreviewDark) {
-                                            scaleX = -1f
-                                        }
-                                    }
-                                )
                             }
                         }
                     }
@@ -223,9 +224,9 @@ fun StyleSettingsScreen(
             if (isLandscape) {
                 Row(modifier = contentModifier) {
                     previewContent(Modifier.fillMaxHeight().weight(0.4f))
-                    Card(
+                    UiCard(
                         modifier = Modifier.fillMaxHeight().weight(0.6f),
-                        shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
+                        containerColor = uiStyleColors().surface,
                     ) {
                         SettingsListContent(
                             currentStyle = currentStyle,
@@ -244,7 +245,7 @@ fun StyleSettingsScreen(
             } else {
                 Column(modifier = contentModifier) {
                     previewContent(Modifier.fillMaxWidth().weight(0.45f))
-                    Card(
+                    UiCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(0.55f)
@@ -259,7 +260,7 @@ fun StyleSettingsScreen(
                                     )
                                 }
                             },
-                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                        containerColor = uiStyleColors().surface,
                     ) {
                         SettingsListContent(
                             currentStyle = currentStyle,
@@ -279,7 +280,7 @@ fun StyleSettingsScreen(
 
             // 颜色选择器底部弹窗
             if (showColorPicker) {
-                ModalBottomSheet(onDismissRequest = { showColorPicker = false }, sheetState = sheetState) {
+                UiSheet(onDismissRequest = { showColorPicker = false }) {
                     val initialColor = currentStyle.courseColorMaps.getOrNull(selectedColorIndex)?.let { pair ->
                         if (isDarkTarget) pair.dark else pair.light
                     } ?: Color.Gray
@@ -297,13 +298,13 @@ fun StyleSettingsScreen(
                             ColorPreviewBox(currentColorInPicker, !isDarkTarget)
                         }
                     )
-                    Spacer(modifier = Modifier.navigationBarsPadding())
+                    if (previewStyle == UiStyle.MATERIAL) Spacer(modifier = Modifier.navigationBarsPadding())
                 }
             }
         } else {
             // 加载中占位图
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                UiLoadingIndicator()
             }
         }
     }

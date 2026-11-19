@@ -208,6 +208,8 @@ class StyleSettingsRepository(
         it.copy(hide_location = hide)
     }
 
+    suspend fun setHideCourseNumber(hide: Boolean) = updateStyle { it.copy(hide_course_number = hide) }
+
     /** 设置是否隐藏授课老师 */
     suspend fun setHideTeacher(hide: Boolean) = updateStyle {
         it.copy(hide_teacher = hide)

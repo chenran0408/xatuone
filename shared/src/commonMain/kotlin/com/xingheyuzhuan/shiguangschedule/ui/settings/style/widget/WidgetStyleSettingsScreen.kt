@@ -1,5 +1,16 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.style.widget
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSelectionCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSettingRow
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,21 +32,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,12 +64,10 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
-import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.action_confirm
 import shiguangschedule.shared.generated.resources.action_reset
 import shiguangschedule.shared.generated.resources.action_reset_style
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.dialog_reset_message
 import shiguangschedule.shared.generated.resources.dialog_reset_title
 import shiguangschedule.shared.generated.resources.label_font_scale
@@ -77,6 +82,7 @@ import shiguangschedule.shared.generated.resources.style_category_grid_size
 import shiguangschedule.shared.generated.resources.theme_dark
 import shiguangschedule.shared.generated.resources.theme_follow_system
 import shiguangschedule.shared.generated.resources.theme_light
+import shiguangschedule.shared.generated.resources.theme_mode_label
 import shiguangschedule.shared.generated.resources.theme_settings_title
 import shiguangschedule.shared.generated.resources.title_theme_seed_color
 import shiguangschedule.shared.generated.resources.title_widget_style
@@ -117,24 +123,10 @@ fun WidgetStyleSettingsScreen(
         )
     }
 
-    Scaffold(
+    UiScaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(Res.string.title_widget_style),
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.arrow_back_24px),
-                            contentDescription = stringResource(Res.string.a11y_back)
-                        )
-                    }
-                }
-            )
+            UiTopAppBar(title = stringResource(Res.string.title_widget_style),
+                onBack = onBack)
         }
     ) { innerPadding ->
         Column(
@@ -242,6 +234,31 @@ private fun WidgetThemeModeSelector(
         WidgetThemeModeProto.WIDGET_THEME_DARK to stringResource(Res.string.theme_dark)
     )
 
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        var choosing by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        UiSettingRow(
+            title = stringResource(Res.string.theme_mode_label),
+            summary = modes.firstOrNull { it.first == currentMode }?.second.orEmpty(),
+            onClick = { choosing = true },
+            trailingContent = { Icon(com.itos.coui.icons.CouiIcons.Next, null) },
+        )
+        if (choosing) UiDialog(
+            onDismissRequest = { choosing = false },
+            title = stringResource(Res.string.theme_mode_label),
+            text = {
+                Column {
+                    modes.forEach { (mode, label) ->
+                        UiSelectionCard(mode == currentMode, onClick = { onModeChange(mode); choosing = false }) {
+                            UiText(label)
+                        }
+                    }
+                }
+            },
+            dismissButton = UiDialogAction(stringResource(Res.string.action_cancel), { choosing = false }),
+        )
+        return
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -281,7 +298,6 @@ private fun WidgetSeedColorPickerItem(
     onReset: () -> Unit
 ) {
     var showSheet by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
 
     Row(
         modifier = Modifier
@@ -315,11 +331,7 @@ private fun WidgetSeedColorPickerItem(
     }
 
     if (showSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSheet = false },
-            sheetState = sheetState,
-            dragHandle = { BottomSheetDefaults.DragHandle() },
-        ) {
+        UiSheet(onDismissRequest = { showSheet = false }) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

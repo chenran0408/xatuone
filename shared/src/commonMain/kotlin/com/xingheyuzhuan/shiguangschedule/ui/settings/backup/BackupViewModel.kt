@@ -44,7 +44,7 @@ import kotlin.random.Random
  *
  * @property baseUrl WebDAV 服务器地址
  * @property username WebDAV 账号用户名
- * @property rootPath 备份文件存储的根目录路径，默认为 "ShiguangSchedule"
+ * @property rootPath 备份文件存储的根目录路径，默认为 "XATU One"
  * @property hasSavedPassword 是否已保存密码
  * @property isTesting 是否正在执行 WebDAV 连接测试
  * @property isBusy 是否正在执行备份或恢复等耗时异步任务
@@ -53,7 +53,7 @@ import kotlin.random.Random
 data class BackupUiState(
     val baseUrl: String = "",
     val username: String = "",
-    val rootPath: String = "ShiguangSchedule",
+    val rootPath: String = "XATU One",
     val hasSavedPassword: Boolean = false,
     val isTesting: Boolean = false,
     val isBusy: Boolean = false,
@@ -95,7 +95,7 @@ class BackupViewModel(
                     state.copy(
                         baseUrl = config?.baseUrl ?: "",
                         username = config?.username ?: "",
-                        rootPath = config?.rootPath ?: "ShiguangSchedule",
+                        rootPath = config?.rootPath ?: "XATU One",
                         hasSavedPassword = !config?.password.isNullOrBlank()
                     )
                 }

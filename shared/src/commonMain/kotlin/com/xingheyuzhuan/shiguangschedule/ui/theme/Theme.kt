@@ -11,6 +11,7 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.rememberDynamicColorScheme
 import com.xingheyuzhuan.shiguangschedule.data.model.AppSettingsModel
 import com.xingheyuzhuan.shiguangschedule.data.model.AppThemeMode
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 
 /**
  * 定义一个用于全局同步深色模式状态的 Local 变量
@@ -39,6 +40,7 @@ fun ShiguangScheduleTheme(
             customLightPrimary = Color(settings.customPrimaryColor.light),
             customDarkPrimary = Color(settings.customPrimaryColor.dark),
             themeMode = settings.themeMode,
+            uiStyle = settings.uiStyle,
             content = content
         )
     }
@@ -54,6 +56,7 @@ fun ShiguangScheduleTheme(
     customLightPrimary: Color = DefaultThemeColor,
     customDarkPrimary: Color = DefaultThemeColor,
     themeMode: AppThemeMode = AppThemeMode.FOLLOW_SYSTEM,
+    uiStyle: UiStyle = UiStyle.MATERIAL,
     content: @Composable () -> Unit
 ) {
     val colorScheme = rememberColorScheme(
@@ -63,19 +66,24 @@ fun ShiguangScheduleTheme(
         customDarkPrimary = customDarkPrimary
     )
 
-    // 应用平台特定的窗口与系统栏外观控制
-    SetupPlatformThemeEffects(
-        colorScheme = colorScheme,
-        darkTheme = darkTheme,
-        themeMode = themeMode
-    )
-
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        content = content
-    )
+        shapes = shapesForStyle(uiStyle)
+    ) {
+        ProvideUiStyle(uiStyle = uiStyle, darkTheme = darkTheme) {
+            SetupPlatformThemeEffects(
+                colorScheme = MaterialTheme.colorScheme,
+                darkTheme = darkTheme,
+                themeMode = themeMode
+            )
+            content()
+        }
+    }
 }
+
+@Composable
+expect fun ProvideUiStyle(uiStyle: UiStyle, darkTheme: Boolean, content: @Composable () -> Unit)
 
 /**
  * 共享的 MaterialKolor 动态配色方案生成函数

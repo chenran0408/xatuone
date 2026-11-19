@@ -1,9 +1,19 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.quickactions.delete
 
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSheet
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiActionButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -19,7 +29,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,10 +41,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -43,7 +50,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDateRangePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,13 +74,11 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
-import shiguangschedule.shared.generated.resources.a11y_back
 import shiguangschedule.shared.generated.resources.action_cancel
 import shiguangschedule.shared.generated.resources.action_confirm
 import shiguangschedule.shared.generated.resources.action_deselect_all
 import shiguangschedule.shared.generated.resources.action_select_all
 import shiguangschedule.shared.generated.resources.action_select_date_range
-import shiguangschedule.shared.generated.resources.arrow_back_24px
 import shiguangschedule.shared.generated.resources.calendar_today_24px
 import shiguangschedule.shared.generated.resources.close_24px
 import shiguangschedule.shared.generated.resources.confirm_delete
@@ -118,7 +125,6 @@ fun QuickDeleteScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     // 控制侧边栏和日期选择器的显示状态
-    val sheetState = rememberModalBottomSheetState()
     var showFilterSheet by remember { mutableStateOf(false) }
     var showDateRangePicker by remember { mutableStateOf(false) }
 
@@ -140,17 +146,11 @@ fun QuickDeleteScreen(
         }
     }
 
-    Scaffold(
+    UiScaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.item_quick_delete)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(vectorResource(Res.drawable.arrow_back_24px), stringResource(Res.string.a11y_back))
-                    }
-                }
-            )
+            UiTopAppBar(title = stringResource(Res.string.item_quick_delete),
+                onBack = onBack)
         },
         bottomBar = {
             // 仅当有选中的课程受到影响时显示删除按钮
@@ -287,7 +287,16 @@ fun QuickDeleteScreen(
 
     // 二次确认对话框
     if (showConfirmDialog) {
-        AlertDialog(
+        if (LocalUiStyle.current == UiStyle.COUI) UiDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = stringResource(Res.string.confirm_delete),
+            text = { UiText(stringResource(Res.string.dialog_delete_confirm_msg)) },
+            confirmButton = UiDialogAction(stringResource(Res.string.confirm_delete), {
+                showConfirmDialog = false
+                viewModel.executeDelete()
+            }),
+            dismissButton = UiDialogAction(stringResource(Res.string.action_cancel), { showConfirmDialog = false }),
+        ) else AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
             title = { Text(stringResource(Res.string.confirm_delete)) },
             text = { Text(stringResource(Res.string.dialog_delete_confirm_msg)) },
@@ -313,7 +322,6 @@ fun QuickDeleteScreen(
     // 底部筛选面板：选择周次（1-20）和星期（1-7）
     if (showFilterSheet) {
         FilterBottomSheet(
-            sheetState = sheetState,
             uiState = uiState,
             viewModel = viewModel,
             onDismiss = { showFilterSheet = false }
@@ -338,18 +346,13 @@ fun QuickDeleteScreen(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterBottomSheet(
-    sheetState: SheetState,
     uiState: QuickDeleteUiState,
     viewModel: QuickDeleteViewModel,
     onDismiss: () -> Unit
 ) {
     val weekDays = stringArrayResource(Res.array.week_days_full_names)
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
-    ) {
+    UiSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -366,14 +369,9 @@ fun FilterBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 (1..20).forEach { week ->
-                    FilterChip(
-                        selected = uiState.selectedWeeks.contains(week),
-                        onClick = { viewModel.toggleWeek(week) },
-                        label = {
-                            Box(modifier = Modifier.width(32.dp), contentAlignment = Alignment.Center) {
-                                Text(week.toString())
-                            }
-                        }
+                    DeleteFilterOption(
+                        label = week.toString(), selected = uiState.selectedWeeks.contains(week),
+                        onClick = { viewModel.toggleWeek(week) }, labelWidth = 32.dp,
                     )
                 }
             }
@@ -399,24 +397,36 @@ fun FilterBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 (1..7).forEach { day ->
-                    FilterChip(
-                        selected = uiState.selectedDays.contains(day),
-                        onClick = { viewModel.toggleDay(day) },
-                        label = {
-                            Box(modifier = Modifier.width(48.dp), contentAlignment = Alignment.Center) {
-                                Text(weekDays[day - 1])
-                            }
-                        }
+                    DeleteFilterOption(
+                        label = weekDays[day - 1], selected = uiState.selectedDays.contains(day),
+                        onClick = { viewModel.toggleDay(day) }, labelWidth = 48.dp,
                     )
                 }
             }
 
             Spacer(Modifier.height(24.dp))
-            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(Res.string.action_confirm))
+            if (LocalUiStyle.current != UiStyle.COUI) {
+                UiActionButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), text = stringResource(Res.string.action_confirm))
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeleteFilterOption(label: String, selected: Boolean, onClick: () -> Unit, labelWidth: androidx.compose.ui.unit.Dp) {
+    if (LocalUiStyle.current == UiStyle.COUI) {
+        Row(
+            Modifier.heightIn(min = 48.dp).toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() })
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            com.itos.coui.checkbox.Checkbox(checked = selected)
+            com.itos.coui.text.Text(text = label, kind = com.itos.coui.text.CouiTextKind.PreferenceValue)
+        }
+    } else FilterChip(selected = selected, onClick = onClick, label = {
+        Box(Modifier.width(labelWidth), contentAlignment = Alignment.Center) { Text(label) }
+    })
 }
 
 /**

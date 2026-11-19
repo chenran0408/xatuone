@@ -4,12 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.width
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiScheduleCourseCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiScheduleCourseShape
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,7 +28,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,10 +51,17 @@ fun CourseBlock(
     style: ScheduleGridStyleComposed,
     timeSlots: List<TimeSlot>,
     modifier: Modifier = Modifier,
-    isFloating: Boolean = false // 标记当前块是否处于长按选中/悬浮状态
+    isFloating: Boolean = false,
+    isPressed: Boolean = false,
 ) {
     val course = courseWrapper.course
+    val uiStyle = LocalUiStyle.current
+    val isCoui = uiStyle == UiStyle.COUI
+    val isMiuix = uiStyle == UiStyle.MIUIX
+    val colors = uiStyleColors()
     val isDarkTheme = LocalIsDarkTheme.current
+    val displayName = com.xingheyuzhuan.shiguangschedule.ui.schedule.courseDisplayName(course.name)
+    val displayNumber = displayName.number.takeUnless { style.hideCourseNumber }
 
     // 颜色适配
     val colorIndex = course.colorInt.takeIf { it in style.courseColorMaps.indices }
@@ -56,8 +72,11 @@ fun CourseBlock(
     val fallbackColorAdapted: Color = if (isDarkTheme) style.courseColorMaps.first().dark else style.courseColorMaps.first().light
 
     val currentAlpha = if (isFloating) 0.95f else style.courseBlockAlpha
-    val blockColor = (courseColorAdapted ?: fallbackColorAdapted).copy(alpha = currentAlpha)
-    val textColor = style.courseTextColor ?: MaterialTheme.colorScheme.onSurface
+    val courseColor = courseColorAdapted ?: fallbackColorAdapted
+    val blockColor = if (isCoui) {
+        lerp(colors.surface.compositeOver(colors.background), courseColor, if (isDarkTheme) .62f else .40f)
+    } else courseColor
+    val textColor = style.courseTextColor ?: colors.onSurface
 
     // 字体大小
     val s13 = (13 * style.fontScale).sp
@@ -90,10 +109,12 @@ fun CourseBlock(
     }
 
     // 边框样式配置
-    val borderColor = if (isFloating) Color(0xFF2196F3) else MaterialTheme.colorScheme.outline
+    val borderColor = if (isFloating && isCoui) colors.accent
+        else if (isFloating) Color(0xFF2196F3)
+        else colors.secondaryText
     val borderWidth = if (isFloating) 2.dp else 1.dp
     val borderAlpha = if (isFloating) 1.0f else style.courseBlockAlpha
-    val shape = RoundedCornerShape(style.courseBlockCornerRadius)
+    val shape = uiScheduleCourseShape(style.courseBlockCornerRadius)
 
     val borderModifier = when (style.borderType) {
         BorderTypeProto.BORDER_TYPE_SOLID -> {
@@ -126,56 +147,103 @@ fun CourseBlock(
         Modifier
     }
 
-    Box(
-        modifier = modifier
-            .then(floatingShadowModifier)
-            .fillMaxSize()
-            .then(borderModifier)
-            .clip(shape)
-            .background(color = blockColor)
+    UiScheduleCourseCard(
+        modifier = modifier.then(floatingShadowModifier).fillMaxSize().clip(shape),
+        shape = shape,
+        containerColor = blockColor.copy(alpha = currentAlpha),
+        raised = isFloating,
+        pressed = isPressed,
     ) {
+        Box(Modifier.fillMaxSize().clip(shape).then(borderModifier)) {
         // 课程文字内容容器
-        Column(
-            modifier = Modifier.fillMaxSize().padding(style.courseBlockInnerPadding),
-            horizontalAlignment = horizontalAlignment,
-            verticalArrangement = verticalArrangement
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize().padding(
+                start = if (isCoui) maxOf(style.courseBlockInnerPadding, 3.dp) else style.courseBlockInnerPadding,
+                top = style.courseBlockInnerPadding + if (isMiuix) 2.dp else 0.dp,
+                end = style.courseBlockInnerPadding,
+                bottom = style.courseBlockInnerPadding,
+            ),
         ) {
-            if (timeTextToShow != null) {
-                Text(
-                    text = timeTextToShow,
-                    fontSize = s10,
-                    color = textColor.copy(alpha = 0.8f),
-                    fontWeight = FontWeight.SemiBold,
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = horizontalAlignment,
+                verticalArrangement = verticalArrangement
+            ) {
+                if (timeTextToShow != null) {
+                    UiText(
+                        text = timeTextToShow,
+                        fontSize = s10,
+                        color = textColor.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = textAlign,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(lineHeight = 1.em)
+                    )
+                }
+
+                UiText(
+                    text = displayName.title,
+                    fontSize = s13,
+                    fontWeight = if (isMiuix || isCoui) FontWeight.SemiBold else FontWeight.Bold,
+                    color = textColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     textAlign = textAlign,
-                    style = TextStyle(lineHeight = 1.em)
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = TextStyle(lineHeight = 1.2.em)
                 )
-            }
 
-            Text(
-                text = course.name,
-                fontSize = s13,
-                fontWeight = FontWeight.Bold,
-                color = textColor,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = textAlign,
-                modifier = Modifier.weight(1f, fill = false),
-                style = TextStyle(lineHeight = 1.2.em)
+                if (displayNumber != null && this@BoxWithConstraints.maxHeight >= 96.dp) {
+                    UiText(
+                        text = displayNumber,
+                        fontSize = s10,
+                        fontWeight = FontWeight.Medium,
+                        color = textColor.copy(alpha = 0.8f),
+                        textAlign = textAlign,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(lineHeight = 1.em),
+                    )
+                }
+
+                if (!style.hideTeacher) {
+                    val teacher = course.teacher
+                    if (teacher.isNotBlank()) {
+                        UiText(text = teacher, fontSize = s10, fontWeight = FontWeight.Medium, color = textColor,
+                            textAlign = textAlign, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(lineHeight = 1.em))
+                    }
+                }
+
+                if (!style.hideLocation) {
+                    val position = course.position
+                    if (position.isNotBlank()) {
+                        val prefix = if (style.removeLocationAt) "" else "@"
+                        UiText(text = "$prefix$position", fontSize = s10, fontWeight = FontWeight.Medium, color = textColor,
+                            textAlign = textAlign, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(lineHeight = 1.em))
+                    }
+                }
+            }
+        }
+
+        if (isCoui) {
+            Box(
+                Modifier
+                    .width(2.dp)
+                    .fillMaxSize()
+                    .align(Alignment.CenterStart)
+                    .background(lerp(courseColor, colors.onSurface, if (isDarkTheme) .55f else .32f))
             )
+        }
 
-            if (!style.hideTeacher) {
-                val teacher = course.teacher
-                if (teacher.isNotBlank()) {
-                    Text(text = teacher, fontSize = s10, color = textColor, textAlign = textAlign, overflow = TextOverflow.Ellipsis, style = TextStyle(lineHeight = 1.em))
-                }
-            }
-
-            if (!style.hideLocation) {
-                val position = course.position
-                if (position.isNotBlank()) {
-                    val prefix = if (style.removeLocationAt) "" else "@"
-                    Text(text = "$prefix$position", fontSize = s10, color = textColor, textAlign = textAlign, overflow = TextOverflow.Ellipsis, style = TextStyle(lineHeight = 1.em))
-                }
-            }
+        if (isMiuix) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .align(Alignment.TopCenter)
+                    .background(uiStyleColors().accent.copy(alpha = .8f))
+            )
         }
 
         // 当单课不是当前周时，进行干净的全局遮罩染色与虚化斜线绘制
@@ -195,6 +263,7 @@ fun CourseBlock(
                         drawRect(brush = brush)
                     }
             )
+        }
         }
     }
 }

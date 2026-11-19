@@ -73,7 +73,8 @@ class XatuCampusRepository(
 
     suspend fun clearDorm() = update { copy(dorm = null, balance = null, balanceAt = 0, balanceHistory = emptyList()) }
 
-    suspend fun saveBalance(balance: String, checkedAt: Long) = update {
+    suspend fun saveBalance(dorm: XatuDormSelection, balance: String, checkedAt: Long) = update {
+        check(this.dorm == dorm) { "宿舍已更改，请重新查询余额" }
         copy(
             balance = balance,
             balanceAt = checkedAt,

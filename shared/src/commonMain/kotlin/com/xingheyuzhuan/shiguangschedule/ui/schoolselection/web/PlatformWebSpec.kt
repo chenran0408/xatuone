@@ -19,7 +19,7 @@ interface WebViewController {
     fun canGoBack(): Boolean
     fun setDevToolsEnabled(enabled: Boolean)
 
-    fun clearSession() {}
+    suspend fun clearSession()
 
     fun persistSession() {}
 
@@ -55,6 +55,9 @@ expect fun PlatformWebView(
     bridgeHandler: WebBridgeHandler,
     onProgressChange: (Float) -> Unit,
     onTitleChange: (String) -> Unit,
+    onLoadError: (String?) -> Unit = {},
+    onPageFinished: (String) -> Unit = {},
+    resetHistoryOnEntry: Boolean = false,
     onNavigateToSchedule: () -> Unit,
     onSslError: (failingUrl: String, onProceed: () -> Unit, onCancel: () -> Unit) -> Unit = { _, _, onCancel -> onCancel() }
 )

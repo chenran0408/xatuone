@@ -100,5 +100,6 @@ message ScheduleGridStyleProto {
   // 壁纸路径已迁移至 AppSettings 数据源，此字段仅作旧版本数据迁移过渡使用
   optional string background_image_path = 19 [deprecated = true];
 
+  optional bool hide_course_number = 29; // 隐藏课程名称中的适配器序号，详情仍完整显示
   optional WidgetStyleProto widget_style = 28;   // 小组件样式配置
 }

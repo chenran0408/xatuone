@@ -19,16 +19,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Switch
-import androidx.compose.runtime.Composable
+import com.xingheyuzhuan.shiguangschedule.ui.components.*
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -38,11 +37,11 @@ import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.a11y_app_icon
 import shiguangschedule.shared.generated.resources.developer_mode_24px
-import shiguangschedule.shared.generated.resources.ic_launcher_foreground
+import shiguangschedule.shared.generated.resources.ic_brand_mark
 import shiguangschedule.shared.generated.resources.item_developer_options
 
 // 图标背景颜色定义
-private val NormalIconBgColor = Color(0xFF73CAF8)
+private val NormalIconBgColor = Color(0xFF155E63)
 private val DeveloperIconBgColor = Color(0xFFBD0000)
 
 /**
@@ -81,11 +80,11 @@ fun DynamicAppIconHeader(
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(Res.drawable.ic_launcher_foreground),
+            painter = painterResource(Res.drawable.ic_brand_mark),
             contentDescription = stringResource(Res.string.a11y_app_icon),
             modifier = Modifier
                 .fillMaxSize()
-                .scale(1.3f),
+                .padding(24.dp),
             contentScale = ContentScale.Fit
         )
     }
@@ -113,7 +112,7 @@ fun DeveloperModeSettingItem(
                 onClick = { onDeveloperModeChanged(!isDeveloperModeEnabled) },
                 showDivider = false,
                 trailingContent = {
-                    Switch(
+                    UiSwitch(
                         checked = isDeveloperModeEnabled,
                         onCheckedChange = { onDeveloperModeChanged(it) }
                     )

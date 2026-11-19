@@ -1,12 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.course
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -14,45 +10,46 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
 import com.xingheyuzhuan.shiguangschedule.data.model.DualColor
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCourseIconButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSettingRow
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiSwitch
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.Res
+import shiguangschedule.shared.generated.resources.a11y_delete_time_slot
 import shiguangschedule.shared.generated.resources.award_star_24px
+import shiguangschedule.shared.generated.resources.chevron_right_24px
 import shiguangschedule.shared.generated.resources.credit_error_invalid
-import shiguangschedule.shared.generated.resources.credit_support_format
 import shiguangschedule.shared.generated.resources.delete_24px
 import shiguangschedule.shared.generated.resources.label_credit
+import shiguangschedule.shared.generated.resources.label_course_weeks
 import shiguangschedule.shared.generated.resources.label_custom_time
 import shiguangschedule.shared.generated.resources.label_day_of_week
+import shiguangschedule.shared.generated.resources.label_none
 import shiguangschedule.shared.generated.resources.label_position
 import shiguangschedule.shared.generated.resources.label_remark
 import shiguangschedule.shared.generated.resources.label_section_range_suffix
 import shiguangschedule.shared.generated.resources.label_teacher
-import shiguangschedule.shared.generated.resources.location_on_24px
-import shiguangschedule.shared.generated.resources.person_24px
 import shiguangschedule.shared.generated.resources.sticky_note_2_24px
+import shiguangschedule.shared.generated.resources.text_weeks_selected
 import shiguangschedule.shared.generated.resources.week_days_full_names
 
 /**
@@ -77,78 +74,52 @@ fun CourseSchemeCard(
     onToggleCustomTime: (Boolean) -> Unit,
     showRemoveButton: Boolean
 ) {
-    Card(
+    UiCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
     ) {
-        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-
-            // 左侧颜色指示器块
-            ColorIndicatorSection(
-                colorIndex = scheme.colorIndex,
-                colorMaps = courseColorMaps,
-                onClick = onColorClick
-            )
-
-            // 右侧内容区
-            Column(modifier = Modifier.padding(16.dp).weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(vectorResource(Res.drawable.person_24px), null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                    TextField(
-                        value = scheme.teacher,
-                        onValueChange = onTeacherChange,
-                        placeholder = { Text(stringResource(Res.string.label_teacher)) },
-                        modifier = Modifier.weight(1f),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Text(stringResource(Res.string.label_custom_time), style = MaterialTheme.typography.labelSmall)
-                    Switch(
-                        checked = scheme.isCustomTime,
-                        onCheckedChange = onToggleCustomTime,
-                        modifier = Modifier.scale(0.7f)
-                    )
-
-                    if (showRemoveButton) {
-                        IconButton(onClick = onRemoveClick) {
-                            Icon(vectorResource(Res.drawable.delete_24px), null, tint = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-
-                // 地点输入
-                OutlinedTextField(
+        Box {
+            Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp).padding(16.dp)) {
+                UiInputField(
+                    value = scheme.teacher,
+                    onValueChange = onTeacherChange,
+                    label = stringResource(Res.string.label_teacher),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                UiInputField(
                     value = scheme.position,
                     onValueChange = onPositionChange,
-                    placeholder = { Text(stringResource(Res.string.label_position)) },
+                    label = stringResource(Res.string.label_position),
                     modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(vectorResource(Res.drawable.location_on_24px), null, Modifier.size(18.dp)) },
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+                    singleLine = true,
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 学分输入框
-                OutlinedTextField(
+                val nativeFields = LocalUiStyle.current != UiStyle.MATERIAL
+                val creditChanged: (String) -> Unit = { value ->
+                    if (value.isEmpty() || (value.all { it.isDigit() || it == '.' } && value.count { it == '.' } <= 1)) {
+                        onCreditChange(value)
+                    }
+                }
+                if (nativeFields) {
+                    UiInputField(
+                        value = scheme.credit,
+                        onValueChange = creditChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = stringResource(Res.string.label_credit),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                    if (scheme.credit.endsWith(".")) {
+                        UiText(stringResource(Res.string.credit_error_invalid), color = MaterialTheme.colorScheme.error)
+                    }
+                } else OutlinedTextField(
                     value = scheme.credit,
-                    onValueChange = { newValue ->
-                        if (newValue.isEmpty() || (newValue.all { it.isDigit() || it == '.' } && newValue.count { it == '.' } <= 1)) {
-                            onCreditChange(newValue)
-                        }
-                    },
+                    onValueChange = creditChanged,
                     placeholder = { Text(stringResource(Res.string.label_credit)) },
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = { Icon(vectorResource(Res.drawable.award_star_24px), null, Modifier.size(18.dp)) },
@@ -158,19 +129,28 @@ fun CourseSchemeCard(
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
                     isError = scheme.credit.endsWith("."),
-                    supportingText = {
-                        if (scheme.credit.endsWith(".")) {
-                            Text(stringResource(Res.string.credit_error_invalid))
-                        } else {
-                            Text(stringResource(Res.string.credit_support_format))
-                        }
-                    }
+                    supportingText = if (scheme.credit.endsWith(".")) {
+                        { Text(stringResource(Res.string.credit_error_invalid)) }
+                    } else null
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 备注输入
-                OutlinedTextField(
+                if (nativeFields) {
+                    UiInputField(
+                        value = scheme.remark,
+                        onValueChange = onRemarkChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (LocalUiStyle.current == UiStyle.COUI) Modifier.heightIn(min = 56.dp, max = 140.dp) else Modifier),
+                        label = stringResource(Res.string.label_remark),
+                    )
+                    UiText(
+                        text = "${scheme.remark.length} / 300",
+                        modifier = Modifier.align(Alignment.End),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                } else OutlinedTextField(
                     value = scheme.remark,
                     onValueChange = onRemarkChange,
                     placeholder = { Text(stringResource(Res.string.label_remark)) },
@@ -195,60 +175,66 @@ fun CourseSchemeCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 底部区域：时间与周次
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // 时间显示逻辑
-                    if (scheme.isCustomTime) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val dayNames = stringArrayResource(Res.array.week_days_full_names)
-                            TimeSection(
-                                dayName = stringResource(Res.string.label_day_of_week),
-                                timeDesc = dayNames.getOrNull(scheme.day - 1) ?: "",
-                                onClick = onDayClick,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            TimeSection(
-                                dayName = stringResource(Res.string.label_custom_time),
-                                timeDesc = "${scheme.customStartTime.ifBlank { "00:00" }}-${scheme.customEndTime.ifBlank { "00:00" }}",
-                                onClick = onTimeClick,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    } else {
-                        val dayNames = stringArrayResource(Res.array.week_days_full_names)
-                        val startAlias = timeSlots.find { it.number == scheme.startSection }?.alias
-                        val endAlias = timeSlots.find { it.number == scheme.endSection }?.alias
-                        val startDisplay = startAlias ?: scheme.startSection.toString()
-                        val endDisplay = endAlias ?: scheme.endSection.toString()
+                UiSettingRow(
+                    title = stringResource(Res.string.label_custom_time),
+                    trailingContent = {
+                        UiSwitch(checked = scheme.isCustomTime, onCheckedChange = onToggleCustomTime)
+                    },
+                )
 
-                        val sectionRangeSuffix = stringResource(Res.string.label_section_range_suffix)
-                        val timeDesc = if (startDisplay == endDisplay) {
-                            "$startDisplay $sectionRangeSuffix"
-                        } else {
-                            "$startDisplay-$endDisplay $sectionRangeSuffix"
-                        }
-
-                        TimeSection(
-                            dayName = dayNames.getOrNull(scheme.day - 1) ?: "",
-                            timeDesc = timeDesc,
-                            onClick = onTimeClick,
-                            modifier = Modifier.weight(1f).fillMaxHeight()
-                        )
-                    }
-
-                    // 周次展示（展示完整周次，撑起整个卡片高度）
-                    WeekSection(
-                        selectedWeeks = scheme.weeks,
-                        onClick = onWeeksClick,
-                        modifier = Modifier.weight(1f)
+                val dayNames = stringArrayResource(Res.array.week_days_full_names)
+                val weekday = dayNames.getOrNull(scheme.day - 1).orEmpty()
+                val chevron: @Composable () -> Unit = {
+                    Icon(vectorResource(Res.drawable.chevron_right_24px), contentDescription = null)
+                }
+                if (scheme.isCustomTime) {
+                    UiSettingRow(
+                        title = stringResource(Res.string.label_day_of_week),
+                        summary = weekday,
+                        onClick = onDayClick,
+                        trailingContent = chevron,
                     )
                 }
+                val timeDescription = if (scheme.isCustomTime) {
+                    "${scheme.customStartTime.ifBlank { "00:00" }}–${scheme.customEndTime.ifBlank { "00:00" }}"
+                } else {
+                    val start = timeSlots.find { it.number == scheme.startSection }?.alias
+                        ?: scheme.startSection.toString()
+                    val end = timeSlots.find { it.number == scheme.endSection }?.alias
+                        ?: scheme.endSection.toString()
+                    val sections = if (start == end) start else "$start–$end"
+                    "$sections ${stringResource(Res.string.label_section_range_suffix)}"
+                }
+                UiSettingRow(
+                    title = if (scheme.isCustomTime) stringResource(Res.string.label_custom_time) else weekday,
+                    summary = timeDescription,
+                    onClick = onTimeClick,
+                    trailingContent = chevron,
+                )
+                UiSettingRow(
+                    title = stringResource(Res.string.label_course_weeks),
+                    summary = if (scheme.weeks.isEmpty()) stringResource(Res.string.label_none) else
+                        stringResource(Res.string.text_weeks_selected, scheme.weeks.sorted().joinToString(", ")),
+                    onClick = onWeeksClick,
+                    trailingContent = chevron,
+                )
+                if (showRemoveButton) {
+                    Box(modifier = Modifier.align(Alignment.End).padding(top = 8.dp)) {
+                        UiCourseIconButton(
+                            icon = vectorResource(Res.drawable.delete_24px),
+                            description = stringResource(Res.string.a11y_delete_time_slot),
+                            tint = MaterialTheme.colorScheme.error,
+                            onClick = onRemoveClick,
+                        )
+                    }
+                }
+            }
+            Box(Modifier.matchParentSize()) {
+                ColorIndicatorSection(
+                    colorIndex = scheme.colorIndex,
+                    colorMaps = courseColorMaps,
+                    onClick = onColorClick,
+                )
             }
         }
     }

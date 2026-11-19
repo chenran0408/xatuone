@@ -10,6 +10,9 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.net.Uri
+import android.webkit.ValueCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -68,14 +71,7 @@ class WebCompatDelegate(private val webView: WebView) {
             }
 
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
-                val handledByOriginal = runCatching { original.onRenderProcessGone(view, detail) }.getOrDefault(false)
-                if (!handledByOriginal) {
-                    view?.let { wv ->
-                        (wv.parent as? ViewGroup)?.removeView(wv)
-                        wv.destroy()
-                    }
-                }
-                return true
+                return original.onRenderProcessGone(view, detail)
             }
 
             override fun onReceivedSslError(v: WebView?, h: SslErrorHandler?, e: SslError?) {
@@ -84,6 +80,8 @@ class WebCompatDelegate(private val webView: WebView) {
 
             override fun onReceivedError(v: WebView, q: WebResourceRequest, e: WebResourceError) =
                 original.onReceivedError(v, q, e)
+            override fun onReceivedHttpError(v: WebView, q: WebResourceRequest, r: WebResourceResponse) =
+                original.onReceivedHttpError(v, q, r)
         }
     }
 
@@ -94,6 +92,8 @@ class WebCompatDelegate(private val webView: WebView) {
                 original.onProgressChanged(view, newProgress)
             }
             override fun onReceivedTitle(v: WebView?, t: String?) = original.onReceivedTitle(v, t)
+            override fun onShowFileChooser(v: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean =
+                original.onShowFileChooser(v, callback, params)
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: android.webkit.GeolocationPermissions.Callback?) {
                 original.onGeolocationPermissionsShowPrompt(origin, callback)
             }

@@ -1,5 +1,21 @@
 import com.android.build.api.variant.FilterConfiguration
 
+abstract class PrepareBrandResources : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val markFile: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun prepare() {
+        val target = outputDirectory.file("drawable/ic_brand_mark.xml").get().asFile
+        target.parentFile.mkdirs()
+        markFile.get().asFile.copyTo(target, overwrite = true)
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -19,8 +35,8 @@ android {
         applicationId = "com.xatuone"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 36
-        versionName = "2.1.0"
+        versionCode = 37
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,8 +102,15 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 }
 
+// Android 系统入口与 Compose 关于页共用一份矢量标识。
+val prepareBrandResources = tasks.register<PrepareBrandResources>("prepareBrandResources") {
+    markFile.set(project(":shared").layout.projectDirectory.file("src/commonMain/composeResources/drawable/ic_brand_mark.xml"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/brandRes"))
+}
+
 androidComponents {
     onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(prepareBrandResources, PrepareBrandResources::outputDirectory)
         val buildType = variant.buildType ?: ""
         val versionName = android.defaultConfig.versionName ?: ""
 

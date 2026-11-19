@@ -2,6 +2,7 @@ package com.xingheyuzhuan.shiguangschedule.ui.settings.time.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,13 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -28,7 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
-import com.xingheyuzhuan.shiguangschedule.ui.components.NativeNumberPicker
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiButton
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialog
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiDialogAction
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiInputField
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
+import com.xingheyuzhuan.shiguangschedule.ui.components.UiTimeWheelPicker
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import com.xingheyuzhuan.shiguangschedule.ui.components.ToastManager
 import kotlinx.datetime.LocalTime
 import org.jetbrains.compose.resources.stringResource
@@ -46,7 +48,6 @@ import shiguangschedule.shared.generated.resources.label_time_slot_alias
 import shiguangschedule.shared.generated.resources.toast_end_time_must_be_later
 import shiguangschedule.shared.generated.resources.toast_time_conflict
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimeSlotEditContent(
     existingTimeSlots: List<TimeSlot>,
@@ -55,6 +56,7 @@ fun TimeSlotEditContent(
     initialEndTime: String,
     initialAlias: String?,
     isEditing: Boolean,
+    dialogActions: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (number: Int, startTime: String, endTime: String, alias: String?) -> Unit
 ) {
@@ -66,9 +68,6 @@ fun TimeSlotEditContent(
     var endHourState by remember { mutableIntStateOf(initialEndHour) }
     var endMinuteState by remember { mutableIntStateOf(initialEndMinute) }
     var aliasState by remember { mutableStateOf(initialAlias ?: "") }
-
-    val staticHours = remember { (0..23).map { formatTwoDigits(it) } }
-    val staticMinutes = remember { (0..59).map { formatTwoDigits(it) } }
 
     val dialogTitleEdit = stringResource(Res.string.dialog_title_edit_time_slot)
     val dialogTitleAdd = stringResource(Res.string.dialog_title_add_time_slot)
@@ -90,40 +89,49 @@ fun TimeSlotEditContent(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = if (isEditing) dialogTitleEdit else dialogTitleAdd,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
+    val confirmAction = {
+        val startTimeObj = LocalTime(startHourState, startMinuteState)
+        val endTimeObj = LocalTime(endHourState, endMinuteState)
 
-        OutlinedTextField(
+        if (endTimeObj <= startTimeObj) {
+            ToastManager.show(toastEndTimeMustBeLater)
+        } else {
+            val hasConflict = existingTimeSlots.any { slot ->
+                if (isEditing && slot.number == initialNumber) return@any false
+                val slotStart = parseLocalTimeSafely(slot.startTime)
+                val slotEnd = parseLocalTimeSafely(slot.endTime)
+                maxOf(startTimeObj, slotStart) < minOf(endTimeObj, slotEnd)
+            }
+
+            if (hasConflict) {
+                ToastManager.show(toastTimeConflict)
+            } else {
+                onConfirm(
+                    initialNumber,
+                    formatTime(startTimeObj),
+                    formatTime(endTimeObj),
+                    aliasState.ifBlank { null }
+                )
+            }
+        }
+    }
+
+    val formFields: @Composable ColumnScope.() -> Unit = {
+        UiInputField(
             value = aliasState,
             onValueChange = { if (it.length <= 5) aliasState = it },
-            label = { Text(stringResource(Res.string.label_time_slot_alias)) },
+            label = stringResource(Res.string.label_time_slot_alias),
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 8.dp),
-            supportingText = {
-                Text(
-                    text = "${aliasState.length}/5",
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.End
-                )
-            }
+        )
+        UiText(
+            text = "${aliasState.length}/5",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            color = uiStyleColors().secondaryText,
+            textAlign = TextAlign.End,
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -139,14 +147,23 @@ fun TimeSlotEditContent(
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text(labelStart, style = MaterialTheme.typography.bodySmall)
-                    Text(labelHour, style = MaterialTheme.typography.labelSmall)
-                }
-                Spacer(modifier = Modifier.width(24.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text("", style = MaterialTheme.typography.bodySmall)
-                    Text(labelMinute, style = MaterialTheme.typography.labelSmall)
+                if (dialogActions) {
+                    UiText(
+                        labelStart,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        UiText(labelStart, style = MaterialTheme.typography.bodySmall)
+                        UiText(labelHour, style = MaterialTheme.typography.labelSmall, color = uiStyleColors().secondaryText)
+                    }
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        UiText(":", style = MaterialTheme.typography.bodySmall)
+                        UiText(labelMinute, style = MaterialTheme.typography.labelSmall, color = uiStyleColors().secondaryText)
+                    }
                 }
             }
 
@@ -156,14 +173,23 @@ fun TimeSlotEditContent(
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text(labelEnd, style = MaterialTheme.typography.bodySmall)
-                    Text(labelHour, style = MaterialTheme.typography.labelSmall)
-                }
-                Spacer(modifier = Modifier.width(24.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text("", style = MaterialTheme.typography.bodySmall)
-                    Text(labelMinute, style = MaterialTheme.typography.labelSmall)
+                if (dialogActions) {
+                    UiText(
+                        labelEnd,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        UiText(labelEnd, style = MaterialTheme.typography.bodySmall)
+                        UiText(labelHour, style = MaterialTheme.typography.labelSmall, color = uiStyleColors().secondaryText)
+                    }
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        UiText(":", style = MaterialTheme.typography.bodySmall)
+                        UiText(labelMinute, style = MaterialTheme.typography.labelSmall, color = uiStyleColors().secondaryText)
+                    }
                 }
             }
         }
@@ -181,31 +207,33 @@ fun TimeSlotEditContent(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NativeNumberPicker(
-                    values = staticHours,
-                    selectedValue = formatTwoDigits(startHourState),
-                    onValueChange = { startHourState = it.toInt() },
+                UiTimeWheelPicker(
+                    value = startHourState,
+                    range = 0..23,
+                    label = "$labelStart $labelHour",
+                    onValueChange = { startHourState = it },
                     modifier = Modifier
                         .height(150.dp)
                         .weight(1f)
                 )
-                Text(
+                UiText(
                     ":",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(horizontal = 4.dp),
                     textAlign = TextAlign.Center
                 )
-                NativeNumberPicker(
-                    values = staticMinutes,
-                    selectedValue = formatTwoDigits(startMinuteState),
-                    onValueChange = { startMinuteState = it.toInt() },
+                UiTimeWheelPicker(
+                    value = startMinuteState,
+                    range = 0..59,
+                    label = "$labelStart $labelMinute",
+                    onValueChange = { startMinuteState = it },
                     modifier = Modifier
                         .height(150.dp)
                         .weight(1f)
                 )
             }
 
-            Text(
+            UiText(
                 "-",
                 modifier = Modifier.padding(horizontal = 8.dp),
                 style = MaterialTheme.typography.titleMedium
@@ -215,24 +243,26 @@ fun TimeSlotEditContent(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NativeNumberPicker(
-                    values = staticHours,
-                    selectedValue = formatTwoDigits(endHourState),
-                    onValueChange = { endHourState = it.toInt() },
+                UiTimeWheelPicker(
+                    value = endHourState,
+                    range = 0..23,
+                    label = "$labelEnd $labelHour",
+                    onValueChange = { endHourState = it },
                     modifier = Modifier
                         .height(150.dp)
                         .weight(1f)
                 )
-                Text(
+                UiText(
                     ":",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(horizontal = 4.dp),
                     textAlign = TextAlign.Center
                 )
-                NativeNumberPicker(
-                    values = staticMinutes,
-                    selectedValue = formatTwoDigits(endMinuteState),
-                    onValueChange = { endMinuteState = it.toInt() },
+                UiTimeWheelPicker(
+                    value = endMinuteState,
+                    range = 0..59,
+                    label = "$labelEnd $labelMinute",
+                    onValueChange = { endMinuteState = it },
                     modifier = Modifier
                         .height(150.dp)
                         .weight(1f)
@@ -240,57 +270,71 @@ fun TimeSlotEditContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            tonalElevation = 3.dp
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = currentTimeRange,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) { Text(actionCancel) }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
-                        val startTimeObj = LocalTime(startHourState, startMinuteState)
-                        val endTimeObj = LocalTime(endHourState, endMinuteState)
-
-                        if (endTimeObj <= startTimeObj) {
-                            ToastManager.show(toastEndTimeMustBeLater)
-                            return@Button
-                        }
-
-                        val hasConflict = existingTimeSlots.any { slot ->
-                            if (isEditing && slot.number == initialNumber) return@any false
-                            val slotStart = parseLocalTimeSafely(slot.startTime)
-                            val slotEnd = parseLocalTimeSafely(slot.endTime)
-                            maxOf(startTimeObj, slotStart) < minOf(endTimeObj, slotEnd)
-                        }
-
-                        if (hasConflict) {
-                            ToastManager.show(toastTimeConflict)
-                            return@Button
-                        }
-
-                        onConfirm(
-                            initialNumber,
-                            formatTime(startTimeObj),
-                            formatTime(endTimeObj),
-                            aliasState.ifBlank { null }
+        if (dialogActions) {
+            UiText(
+                text = currentTimeRange,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            Spacer(modifier = Modifier.height(16.dp))
+            UiCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    UiText(
+                        text = currentTimeRange,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        UiButton(text = actionCancel, onClick = onDismiss)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        UiButton(
+                            text = if (isEditing) actionSaveChanges else actionAdd,
+                            selected = true,
+                            onClick = confirmAction,
                         )
-                    }) {
-                        Text(if (isEditing) actionSaveChanges else actionAdd)
                     }
                 }
             }
+        }
+    }
+
+    if (dialogActions) {
+        UiDialog(
+            onDismissRequest = onDismiss,
+            title = if (isEditing) dialogTitleEdit else dialogTitleAdd,
+            text = { Column(modifier = Modifier.fillMaxWidth(), content = formFields) },
+            confirmButton = UiDialogAction(
+                text = if (isEditing) actionSaveChanges else actionAdd,
+                onClick = confirmAction,
+            ),
+            dismissButton = UiDialogAction(text = actionCancel, onClick = onDismiss),
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                UiText(
+                    text = if (isEditing) dialogTitleEdit else dialogTitleAdd,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            formFields()
         }
     }
 }

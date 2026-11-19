@@ -6,6 +6,11 @@ import com.xingheyuzhuan.shiguangschedule.ui.components.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -23,6 +28,23 @@ class WebBridgeHandler(
     private val json = CourseImportExport.json
     private var importTableId: String? = null
     private var importActive = false
+    private var trackedCourseImport = false
+    private val _importProgress = MutableStateFlow(CourseImportProgress())
+    val importProgress = _importProgress.asStateFlow()
+
+    fun importFailed(message: String) {
+        _importProgress.update { it.copy(running = false, error = message, message = message) }
+        importActive = false
+        importTableId = null
+    }
+
+    private fun importScriptSettled(message: String?) {
+        if (!trackedCourseImport || !_importProgress.value.running) return
+        _importProgress.update { it.scriptReturned(message) }
+        importActive = false
+        importTableId = null
+    }
+
 
     /**
      * 状态标记：标记当前任务下是否已经成功执行了“作息方案（组合作息）”导入。
@@ -38,10 +60,17 @@ class WebBridgeHandler(
      */
     private var latestPresetTimeSlots: List<CourseImportExport.TimeSlotJsonModel>? = null
 
+    internal fun prepareCourseImport() {
+        setImportTableId(null, trackCourseImport = true)
+        _importProgress.value = CourseImportProgress(running = true, message = "正在读取学期…")
+    }
+
     /**
      * 设置当前导入的目标课表 ID。
      */
-    fun setImportTableId(tableId: String?) {
+    fun setImportTableId(tableId: String?, trackCourseImport: Boolean = false) {
+        this.trackedCourseImport = trackCourseImport
+        _importProgress.value = CourseImportProgress(running = tableId != null, message = "正在读取教务参数…")
         this.importTableId = tableId
         this.importActive = tableId != null
         this.isComboScheduleImported = false // 切换或重置课表时重置状态
@@ -95,6 +124,7 @@ class WebBridgeHandler(
                 }
 
                 "notifyTaskCompletion" -> notifyTaskCompletion()
+                "importScriptSettled" -> importScriptSettled(message.payload?.let { bridgeJson.parseToJsonElement(it).jsonObject["message"]?.jsonPrimitive?.content })
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -105,6 +135,7 @@ class WebBridgeHandler(
      * 显示短提示 Toast。
      */
     fun showToast(message: String) {
+        if (_importProgress.value.running) _importProgress.update { it.copy(message = message) }
         ToastManager.show(message)
     }
 
@@ -203,8 +234,16 @@ class WebBridgeHandler(
         try {
             val items = json.decodeFromString<List<String>>(itemsJsonString)
             val data = SingleSelectionDialogData(titleText, items, defaultSelectedIndex)
+            if (importActive) _importProgress.update { it.copy(message = "等待确认：$titleText") }
 
             val promiseCallback: (Int?) -> Unit = { selectedIndex ->
+                if (importActive) {
+                    if (selectedIndex == null) {
+                        _importProgress.update { it.copy(running = false, message = "已取消同步，尚未保存课程。") }
+                        importActive = false
+                        importTableId = null
+                    } else _importProgress.update { it.copy(selection = items[selectedIndex], message = "正在请求课程…") }
+                }
                 if (callbackId != null) {
                     resolveJsPromise(callbackId, selectedIndex?.toString() ?: "null")
                 }
@@ -246,13 +285,16 @@ class WebBridgeHandler(
                     )
                 }
                 courseConversionRepository.importCourses(tableId, sanitizedCoursesList)
+                sanitizedCoursesList.size
             }
 
             coroutineScope.launch(Dispatchers.Main) {
-                result.onSuccess {
+                result.onSuccess { count ->
+                    _importProgress.update { it.copy(savedCount = count, message = "课程已保存，正在完成同步…") }
                     ToastManager.show("课程导入成功！课表已更新。")
                     if (callbackId != null) resolveJsPromise(callbackId, "true")
                 }.onFailure { e ->
+                    _importProgress.update { it.copy(error = "课程导入失败: ${e.message}") }
                     ToastManager.show("课程导入失败: ${e.message}")
                     if (callbackId != null) rejectJsPromise(callbackId, "课程导入失败: ${e.message}")
                 }
@@ -284,6 +326,7 @@ class WebBridgeHandler(
                     ToastManager.show("课表配置导入成功！")
                     if (callbackId != null) resolveJsPromise(callbackId, "true")
                 }.onFailure { e ->
+                    _importProgress.update { it.copy(error = "课表配置导入失败: ${e.message}") }
                     ToastManager.show("课表配置导入失败: ${e.message}")
                     if (callbackId != null) rejectJsPromise(callbackId, "课表配置导入失败: ${e.message}")
                 }
@@ -333,6 +376,7 @@ class WebBridgeHandler(
                     ToastManager.show("预设时间段导入成功！")
                     if (callbackId != null) resolveJsPromise(callbackId, "true")
                 }.onFailure { e ->
+                    _importProgress.update { it.copy(error = "预设时间段导入失败: ${e.message}") }
                     ToastManager.show("预设时间段导入失败: ${e.message}")
                     if (callbackId != null) rejectJsPromise(callbackId, "预设时间段导入失败: ${e.message}")
                 }
@@ -389,6 +433,7 @@ class WebBridgeHandler(
                     ToastManager.show("作息方案导入成功！")
                     if (callbackId != null) resolveJsPromise(callbackId, "true")
                 }.onFailure { e ->
+                    _importProgress.update { it.copy(error = "作息方案导入失败: ${e.message}") }
                     ToastManager.show("作息方案导入失败: ${e.message}")
                     if (callbackId != null) rejectJsPromise(callbackId, "作息方案导入失败: ${e.message}")
                 }
@@ -400,11 +445,12 @@ class WebBridgeHandler(
      * 通知 Web 任务执行完成，清理上下文状态。
      */
     fun notifyTaskCompletion() {
+        if (trackedCourseImport) _importProgress.update { it.complete() }
         importTableId = null
         importActive = false
         isComboScheduleImported = false
         latestPresetTimeSlots = null // 任务结束清理内存
-        onTaskCompleted()
+        if (!trackedCourseImport || _importProgress.value.completed) onTaskCompleted()
     }
 
     /**

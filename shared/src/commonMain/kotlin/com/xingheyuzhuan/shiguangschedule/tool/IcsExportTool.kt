@@ -118,7 +118,7 @@ object IcsExportTool {
         // 标准 ICS 头规范
         ics.append("BEGIN:VCALENDAR\r\n")
         ics.append("VERSION:2.0\r\n")
-        ics.append("PRODID:-//ShiGuangSchedule//ZH\r\n")
+        ics.append("PRODID:-//XATU One//ZH\r\n")
         ics.append("CALSCALE:GREGORIAN\r\n")
         ics.append("METHOD:PUBLISH\r\n")
         ics.append("BEGIN:VTIMEZONE\r\n")
@@ -136,7 +136,7 @@ object IcsExportTool {
             courses, getTimeSlotsForDate, semesterStartDate, semesterTotalWeeks, firstDayOfWeekInt, isHolidayDate
         ) { course, start, end, _ ->
             ics.append("BEGIN:VEVENT\r\n")
-            ics.append("UID:${generateUid()}@shiguangschedule.com\r\n")
+            ics.append("UID:${generateUid()}@com.xatuone\r\n")
             ics.append("DTSTAMP:$dtStampStr\r\n")
             ics.append("DTSTART;TZID=Asia/Shanghai:${formatDateTimeLocal(start)}\r\n")
             ics.append("DTEND;TZID=Asia/Shanghai:${formatDateTimeLocal(end)}\r\n")

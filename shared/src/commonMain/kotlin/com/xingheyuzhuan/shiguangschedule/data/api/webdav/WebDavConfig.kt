@@ -11,7 +11,7 @@ data class WebDavConfig(
     val baseUrl: String,
     val username: String,
     val password: SenderPassword,
-    val rootPath: String = "ShiguangSchedule"
+    val rootPath: String = "XATU One"
 ) {
     /**
      * 自动化处理根路径的斜杠，确保返回的形式
