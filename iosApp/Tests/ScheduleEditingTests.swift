@@ -143,4 +143,51 @@ final class ScheduleEditingTests: XCTestCase {
         XCTAssertNil(autumn.matchingPrevious(table))
         XCTAssertNil(autumn.usableDates(previous: table))
     }
+
+    func testSingleDateMovesKeepAllOtherWeeksAndCourseDetails() throws {
+        let monday = try XCTUnwrap(SchoolCalendar.date("2024-09-02"))
+        let tuesday = SchoolCalendar.add(1, to: monday)
+        var from = course
+        from.color = 4; from.credit = 2; from.remark = "实验"; from.isCustomTime = true
+        from.customStartTime = "09:00"; from.customEndTime = "10:30"
+        var to = course
+        to.name = "高数"; to.day = 2; to.weeks = [1, 2]
+        let original = CampusTimetable(semester: "秋季", dates: term, courses: [from, to], slots: TeachingSlot.campusDefaults)
+        for mode in DayCourseMove.allCases {
+            var table = original
+            try table.moveCourses(from: monday, to: tuesday, mode: mode)
+            var moved = from
+            moved.day = 2; moved.weeks = [1]
+            let atTarget = table.courses(on: tuesday)
+            XCTAssertTrue(atTarget.contains(moved))
+            XCTAssertEqual(atTarget.count, mode == .merge ? 2 : 1)
+            if mode == .exchange {
+                var exchanged = to
+                exchanged.day = 1; exchanged.weeks = [1]
+                XCTAssertEqual(table.courses(on: monday), [exchanged])
+            } else { XCTAssertTrue(table.courses(on: monday).isEmpty) }
+            XCTAssertEqual(table.courses(on: SchoolCalendar.add(14, to: monday)).map(\.name), [from.name])
+            XCTAssertEqual(table.courses(on: SchoolCalendar.add(7, to: tuesday)).map(\.name), [to.name])
+        }
+    }
+
+    func testExchangeAcrossWeeksAndOverwriteFromEmptyDateOnlyTouchThoseOccurrences() throws {
+        let monday = try XCTUnwrap(SchoolCalendar.date("2024-09-02"))
+        let thirdMonday = SchoolCalendar.add(14, to: monday)
+        var recurring = course
+        recurring.weeks = [1, 2, 3]
+        var extra = course
+        extra.name = "讨论课"; extra.weeks = [1]
+        var table = CampusTimetable(semester: "秋季", dates: term, courses: [recurring, extra], slots: TeachingSlot.campusDefaults)
+        try table.moveCourses(from: monday, to: thirdMonday, mode: .exchange)
+        XCTAssertEqual(table.courses(on: monday).map(\.name), [recurring.name])
+        XCTAssertEqual(Set(table.courses(on: thirdMonday).map(\.name)), [recurring.name, extra.name])
+        XCTAssertEqual(table.courses(on: SchoolCalendar.add(7, to: monday)).map(\.name), [recurring.name])
+        try table.moveCourses(from: SchoolCalendar.add(1, to: monday), to: thirdMonday, mode: .overwrite)
+        XCTAssertTrue(table.courses(on: thirdMonday).isEmpty)
+        let before = table
+        XCTAssertThrowsError(try table.moveCourses(from: monday.addingTimeInterval(3600), to: monday, mode: .exchange))
+        XCTAssertThrowsError(try table.moveCourses(from: monday, to: SchoolCalendar.add(-1, to: monday), mode: .overwrite))
+        XCTAssertEqual(table, before)
+    }
 }

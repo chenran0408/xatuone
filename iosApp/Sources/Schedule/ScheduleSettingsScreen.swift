@@ -29,11 +29,11 @@ struct ScheduleSettingsScreen: View {
                     NavigationLink("假期与调休") { DayAdjustmentList(model: model, owner: owner, key: key) }
                 }
             }
-            if let table = model.archive.current, let key = model.archive.selected {
+            if let key = model.archive.selected, model.archive.current != nil {
                 Section("课表显示") {
-                    displayToggle("课程序号", \.showNumber, table, key)
-                    displayToggle("教师", \.showTeacher, table, key)
-                    displayToggle("地点", \.showLocation, table, key)
+                    displayToggle("课程序号", \.showNumber, key)
+                    displayToggle("教师", \.showTeacher, key)
+                    displayToggle("地点", \.showLocation, key)
                 }
             }
             Section {
@@ -44,14 +44,14 @@ struct ScheduleSettingsScreen: View {
         }.navigationTitle("课表设置")
     }
     private func displayToggle(_ title: String, _ option: WritableKeyPath<TimetableDisplay, Bool>,
-                               _ table: CampusTimetable, _ key: String) -> some View {
-        Toggle(title, isOn: Binding(get: { table.displayOptions[keyPath: option] }, set: { value in
+                               _ key: String) -> some View {
+        Toggle(title, isOn: Binding(get: { model.archive.semesters[key]?.displayOptions[keyPath: option] ?? false }, set: { value in
             performScheduleEdit($error) {
                 try model.changeTable(owner: owner, key: key) { saved in
                     var display = saved.displayOptions; display[keyPath: option] = value; saved.display = display
                 }
             }
-        }))
+        })).contentShape(Rectangle())
     }
 }
 
@@ -184,6 +184,7 @@ struct CourseManager: View {
                 Section {
                     NavigationLink("新增课程") { CourseEditor(model: model, owner: owner, key: key, table: table, index: nil) }
                     if !table.courses.isEmpty {
+                        NavigationLink("按日期调课") { DateCourseEditor(model: model, owner: owner, key: key, table: table) }
                         NavigationLink("批量调课") { BulkCourseEditor(model: model, owner: owner, key: key, table: table) }
                     }
                 }

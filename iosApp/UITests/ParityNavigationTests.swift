@@ -99,8 +99,9 @@ final class ParityNavigationTests: XCTestCase {
         let numberSwitch = app.switches["课程序号"]
         XCTAssertTrue(numberSwitch.waitForExistence(timeout: 8))
         XCTAssertEqual(numberSwitch.value as? String, "0")
-        numberSwitch.tap()
-        XCTAssertEqual(numberSwitch.value as? String, "1")
+        numberSwitch.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: numberSwitch)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
         tap(app.buttons["课程管理"])
         tap(app.buttons["新增课程"])
         let nameField = app.textFields["课程名称"]

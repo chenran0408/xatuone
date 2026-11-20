@@ -40,7 +40,44 @@ extension TimetableCourse {
     }
 }
 
+enum DayCourseMove: String, CaseIterable {
+    case merge = "合并"
+    case overwrite = "覆盖"
+    case exchange = "交换"
+}
+
 extension CampusTimetable {
+    mutating func moveCourses(from source: Date, to target: Date, mode: DayCourseMove) throws {
+        guard !SchoolCalendar.calendar.isDate(source, inSameDayAs: target) else {
+            throw ScheduleIssue.message("请选择两个不同日期")
+        }
+        guard let sourceWeek = week(on: source), let targetWeek = week(on: target) else {
+            throw ScheduleIssue.message("调课日期须在本学期内")
+        }
+        let sourceDay = SchoolCalendar.dayNumber(source), targetDay = SchoolCalendar.dayNumber(target)
+        var result = [TimetableCourse]()
+        for course in courses {
+            let from = course.day == sourceDay && course.weeks.contains(sourceWeek)
+            let removeTarget = mode != .merge && course.day == targetDay && course.weeks.contains(targetWeek)
+            guard from || removeTarget else { result.append(course); continue }
+
+            var rest = course
+            rest.weeks.removeAll { (from && $0 == sourceWeek) || (removeTarget && $0 == targetWeek) }
+            if !rest.weeks.isEmpty { result.append(rest) }
+            if from {
+                var moved = course
+                moved.weeks = [targetWeek]; moved.day = targetDay
+                result.append(moved)
+            }
+            if removeTarget && mode == .exchange {
+                var moved = course
+                moved.weeks = [sourceWeek]; moved.day = sourceDay
+                result.append(moved)
+            }
+        }
+        courses = result
+    }
+
     mutating func adjustCourses(_ indices: Set<Int>, movingWeeksBy offset: Int, toDay day: Int?) throws {
         guard !indices.isEmpty, offset != 0 || day != nil else { throw ScheduleIssue.message("请选择课程和调整方式") }
         var updated = courses

@@ -177,8 +177,12 @@ struct CampusTimetable: Codable, Equatable {
             guard let source = adjustment.lessonDate.flatMap(SchoolCalendar.date) else { return [] }
             lessonDate = source
         }
-        guard let week = week(on: lessonDate) else { return [] }
-        let weekday = SchoolCalendar.dayNumber(lessonDate)
+        return regularCourses(on: lessonDate)
+    }
+
+    func regularCourses(on date: Date) -> [TimetableCourse] {
+        guard let week = week(on: date) else { return [] }
+        let weekday = SchoolCalendar.dayNumber(date)
         return courses.filter { $0.day == weekday && $0.weeks.contains(week) }
             .sorted { ($0.startSection, $0.name) < ($1.startSection, $1.name) }
     }
