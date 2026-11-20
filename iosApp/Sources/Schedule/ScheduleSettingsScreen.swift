@@ -59,6 +59,7 @@ private struct TimetableManager: View {
     @ObservedObject var model: ScheduleModel
     let owner: String
     @State private var deleting: String?
+    @State private var renaming: String?
     @State private var error: String?
     var body: some View {
         List {
@@ -72,7 +73,7 @@ private struct TimetableManager: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.borderless)
                         Menu {
-                            NavigationLink("重命名") { TableNameForm(model: model, owner: owner, key: key, name: table.title) }
+                            Button("重命名") { renaming = key }
                             Button("删除课表", role: .destructive) { deleting = key }
                         } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
                             .accessibilityLabel("\(table.title)的操作")
@@ -80,8 +81,13 @@ private struct TimetableManager: View {
                 }
             }
             NavigationLink("新建课表") { TableNameForm(model: model, owner: owner) }
-            if let error { Text(error).foregroundStyle(.red) }
+            if let error = error ?? model.problem { Text(error).foregroundStyle(.red) }
         }.navigationTitle("课表管理")
+         .navigationDestination(isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+             if let key = renaming, let table = model.archive.semesters[key] {
+                 TableNameForm(model: model, owner: owner, key: key, name: table.title)
+             }
+         }
          .confirmationDialog("删除「\(deleting.flatMap { model.archive.semesters[$0]?.title } ?? "")」及其中的课程？",
                              isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                              titleVisibility: .visible, presenting: deleting) { key in

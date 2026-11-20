@@ -25,8 +25,9 @@ private enum AcademicService: String, CaseIterable, Identifiable {
 }
 
 struct AcademicExamsScreen: View {
-    var semesterID: String? = nil
+    let semesterID: String?
     @EnvironmentObject private var session: CampusSession
+    init(semesterID: String? = nil) { self.semesterID = semesterID }
     var body: some View { AcademicServiceScreen(service: .exams, initialTerm: semesterID).id(session.accountID) }
 }
 

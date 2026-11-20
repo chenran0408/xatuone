@@ -28,6 +28,11 @@ final class CourseDeviceServices: ObservableObject {
         if owner != account {
             if defaults.string(forKey: "courseReminders.owner") != account {
                 clearDelivered = true
+                // Clear the previous owner's presentation before loading the replacement timetable.
+                agenda = nil
+                hasTimetable = false
+                temporaryOwner = nil
+                publishWidget()
                 defaults.set(account, forKey: "courseReminders.owner")
             }
             temporaryOwner = nil
@@ -59,7 +64,7 @@ final class CourseDeviceServices: ObservableObject {
             if CourseWidgetExchange.hasContainer {
                 widgetMessage = hasTimetable ? "小组件会随当前课表更新。" : "添加或同步课表后，小组件会显示课程。"
             } else if temporaryOwner != nil && hasTimetable {
-                widgetMessage = "已临时同步。若系统结束主应用，请重新打开并同步。"
+                widgetMessage = "已临时同步今天、明天及下一节课。两天后或主应用退出后，可重新打开并同步。"
             } else {
                 widgetMessage = "此签名使用临时同步。在这里发送当前课表后，将小组件添加到主屏幕。"
             }

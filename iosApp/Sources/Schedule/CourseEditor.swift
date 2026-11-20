@@ -4,7 +4,7 @@ struct CourseEditor: View {
     @ObservedObject var model: ScheduleModel
     let owner: String, key: String, table: CampusTimetable
     let index: Int?
-    let original: TimetableCourse?
+    @State private var original: TimetableCourse?
     let afterSave: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var course: TimetableCourse
@@ -19,7 +19,7 @@ struct CourseEditor: View {
         self.model = model; self.owner = owner; self.key = key; self.table = table
         self.index = index; self.afterSave = afterSave
         let old = index.flatMap { table.courses.indices.contains($0) ? table.courses[$0] : nil }
-        self.original = old
+        _original = State(initialValue: old)
         let value = old ?? TimetableCourse(name: "", teacher: "", position: "", day: 1, startSection: 1,
                                            endSection: 1, weeks: [1])
         _course = State(initialValue: value)
@@ -103,12 +103,17 @@ struct CourseEditor: View {
 
 struct BulkCourseEditor: View {
     @ObservedObject var model: ScheduleModel
-    let owner: String, key: String, table: CampusTimetable
+    let owner: String, key: String
+    @State private var courses: [TimetableCourse]
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<Int> = []
     @State private var offset = 0
     @State private var newDay = 0
     @State private var problem: String?
+    init(model: ScheduleModel, owner: String, key: String, table: CampusTimetable) {
+        self.model = model; self.owner = owner; self.key = key
+        _courses = State(initialValue: table.courses)
+    }
     var body: some View {
         Form {
             Section("调整方式") {
@@ -119,11 +124,11 @@ struct BulkCourseEditor: View {
                 }
             }
             Section("选择课程") {
-                Button(selected.count == table.courses.count ? "取消全选" : "全选") {
-                    selected = selected.count == table.courses.count ? [] : Set(table.courses.indices)
+                Button(selected.count == courses.count ? "取消全选" : "全选") {
+                    selected = selected.count == courses.count ? [] : Set(courses.indices)
                 }
-                ForEach(table.courses.indices, id: \.self) { i in
-                    let c = table.courses[i]
+                ForEach(courses.indices, id: \.self) { i in
+                    let c = courses[i]
                     Button {
                         if selected.contains(i) { selected.remove(i) } else { selected.insert(i) }
                     } label: {
@@ -143,7 +148,7 @@ struct BulkCourseEditor: View {
             Button("保存") {
                 performScheduleEdit($problem) {
                     try model.changeTable(owner: owner, key: key) { value in
-                        guard value.courses == table.courses else { throw ScheduleIssue.message("课表已变更，请重新选择") }
+                        guard value.courses == courses else { throw ScheduleIssue.message("课表已变更，请重新选择") }
                         try value.adjustCourses(selected, movingWeeksBy: offset, toDay: newDay == 0 ? nil : newDay)
                     }; dismiss()
                 }

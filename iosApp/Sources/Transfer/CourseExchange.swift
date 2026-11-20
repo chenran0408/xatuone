@@ -58,11 +58,16 @@ enum CourseExchange {
               SchoolCalendar.date(table.dates.semesterStartDate) != nil, (1...53).contains(table.dates.semesterTotalWeeks) else {
             throw ScheduleIssue.message("请检查课表名称、开学日期和周数")
         }
-        var previousEnd = -1
-        for (i, slot) in table.slots.enumerated() {
-            guard slot.number == i + 1, let a = CourseEvents.minutes(slot.startTime), let b = CourseEvents.minutes(slot.endTime),
-                  a >= previousEnd, a < b else { throw ScheduleIssue.message("节次顺序或时间无效") }
-            previousEnd = b
+        guard (1...7).contains(table.dates.firstDayOfWeek ?? 1),
+              table.slots.isEmpty || TeachingSlot.valid(table.slots) else { throw ScheduleIssue.message("节次顺序或时间无效") }
+        for rule in table.comboSchedule?.publicSchedules ?? [] {
+            guard let first = SchoolCalendar.date(rule.startDate), let last = SchoolCalendar.date(rule.endDate), first <= last,
+                  TeachingSlot.valid(rule.timeSlots) else { throw ScheduleIssue.message("组合作息的日期或节次无效") }
+        }
+        for (date, adjustment) in table.adjustments ?? [:] {
+            guard SchoolCalendar.date(date) != nil, adjustment.lessonDate.map({SchoolCalendar.date($0) != nil}) != false else {
+                throw ScheduleIssue.message("假期或调休日期无效")
+            }
         }
         for c in table.courses {
             guard !c.name.isEmpty, (1...7).contains(c.day), c.startSection > 0, c.endSection >= c.startSection,
@@ -87,10 +92,7 @@ struct CampusEvent: Equatable {
 
 enum CourseEvents {
     static func minutes(_ value: String) -> Int? {
-        let parts = value.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2, (1...2).contains(parts[0].count), parts[1].count == 2,
-              let h = Int(parts[0]), let m = Int(parts[1]), (0...23).contains(h), (0...59).contains(m) else { return nil }
-        return h * 60 + m
+        TeachingSlot.minutes(value)
     }
 
     static func key(_ parts: [String]) -> String {

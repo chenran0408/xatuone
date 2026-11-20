@@ -93,6 +93,8 @@ struct ScheduleScreen: View {
                             if model.archive.current == nil { Task { await model.sync(session) } }
                             else { chooseSyncTarget = true }
                         }
+                    } else if model.archive.current != nil {
+                        Button("登录教务") { session.openAcademic() }
                     }
                     NavigationLink {
                         ScheduleSettingsScreen(model: model, owner: session.timetableOwner).id(session.timetableOwner)
@@ -188,14 +190,23 @@ private struct WeekTimetable: View {
     @ScaledMetric(relativeTo: .body) private var columnWidth: CGFloat = 77
 
     var body: some View {
-        let monday = table.startOfWeek(containing: date)
+        let first = table.startOfWeek(containing: date)
+        let days = (0..<7).map { SchoolCalendar.add($0, to: first) }
+        let dailySlots = days.map { table.slots(on: $0) }
+        let axis = dailySlots[0]
+        let varying = Set(axis.compactMap { slot -> Int? in
+            dailySlots.dropFirst().contains { slots in
+                guard let other = slots.first(where: { $0.number == slot.number }) else { return true }
+                return slot.startTime != other.startTime || slot.endTime != other.endTime
+            } ? slot.number : nil
+        })
         let dayCourses = table.coursesInWeek(containing: date)
         ScrollView([.horizontal, .vertical]) {
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
                     Text("节次").font(.caption)
                     ForEach(0..<7) { day in
-                        let shown = SchoolCalendar.add(day, to: monday)
+                        let shown = days[day]
                         VStack(spacing: 3) {
                             Text(SchoolCalendar.dayNames[SchoolCalendar.dayNumber(shown) - 1]).font(.subheadline.bold())
                             Text(String(SchoolCalendar.iso(shown).suffix(5))).font(.caption.monospacedDigit())
@@ -203,20 +214,26 @@ private struct WeekTimetable: View {
                          .foregroundStyle(SchoolCalendar.calendar.isDateInToday(shown) ? Color.accentColor : Color.primary)
                     }
                 }
-                ForEach(table.slots, id: \.number) { slot in
+                ForEach(axis, id: \.number) { slot in
                     GridRow(alignment: .top) {
-                        VStack(spacing: 4) { Text("\(slot.number)").bold(); Text(slot.startTime); Text(slot.endTime) }
+                        VStack(spacing: 4) {
+                            Text(slot.alias ?? "\(slot.number)").bold()
+                            if !varying.contains(slot.number) { Text(slot.startTime); Text(slot.endTime) }
+                        }
                             .font(.caption.monospacedDigit()).frame(minWidth: 45, minHeight: 46)
-                            .accessibilityLabel("第 \(slot.number) 节，\(slot.startTime) 至 \(slot.endTime)")
+                            .accessibilityLabel(varying.contains(slot.number) ? "第 \(slot.number) 节" : "第 \(slot.number) 节，\(slot.startTime) 至 \(slot.endTime)")
                         ForEach(1...7, id: \.self) { day in
                             let items = dayCourses[day - 1].filter { ($0.startSection...$0.endSection).contains(slot.number) }
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(items.indices, id: \.self) { i in
                                     let course = items[i]
-                                    Button { select(course, SchoolCalendar.add(day - 1, to: monday)) } label: {
+                                    let showsTime = course.isCustomTime == true || varying.contains { (course.startSection...course.endSection).contains($0) }
+                                    let time = showsTime ? table.time(for: course, on: days[day - 1]) : nil
+                                    Button { select(course, days[day - 1]) } label: {
                                         VStack(alignment: .leading, spacing: 3) {
                                             if course.startSection == slot.number {
                                                 Text(table.displayOptions.showNumber ? course.name : course.title).font(.caption.bold())
+                                                if let time { Text(time).font(.caption2.monospacedDigit()) }
                                                 if table.displayOptions.showTeacher && !course.teacher.isEmpty {
                                                     Text(course.teacher).font(.caption2).foregroundStyle(.secondary)
                                                 }
@@ -229,7 +246,11 @@ private struct WeekTimetable: View {
                                         }.padding(5).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                          .background(ScheduleColors.tint(course).opacity(0.17), in: RoundedRectangle(cornerRadius: 6))
                                     }.buttonStyle(.plain)
-                                     .accessibilityLabel("\(course.title)，\(course.sectionText)，\(course.position)")
+                                     .accessibilityLabel([table.displayOptions.showNumber ? course.name : course.title,
+                                                          course.sectionText, time,
+                                                          table.displayOptions.showTeacher ? course.teacher : nil,
+                                                          table.displayOptions.showLocation ? course.position : nil]
+                                         .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "，"))
                                 }
                             }.frame(width: columnWidth).frame(minHeight: 46, alignment: .top)
                         }

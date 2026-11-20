@@ -24,6 +24,7 @@ struct XatuOneApp: App {
             .tint(style == "compact" ? .blue : style == "floating" ? .teal : .accentColor)
             .preferredColorScheme(mode == "dark" ? .dark : mode == "light" ? .light : nil)
             .onAppear { refreshDevice() }
+            .onOpenURL { if $0.scheme == "xatuone", $0.host == "schedule" { tab = .courses } }
             .onChange(of:session.timetableOwner) { _ in refreshDevice() }
             .onChange(of:phase) { if $0 == .active { refreshDevice() } }
             .onReceive(NotificationCenter.default.publisher(for:.xatuTimetableChanged)) { note in

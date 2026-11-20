@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import XatuOne
 
 final class CampusTests: XCTestCase {
@@ -63,5 +64,37 @@ final class CampusTests: XCTestCase {
         restored.selected = first
         XCTAssertEqual(restored.readings.last?.amount, 20)
         XCTAssertTrue(try CampusPowerHistory.load(account: "test-b", defaults: defaults).readings.isEmpty)
+    }
+
+    func testDailyUsesLastCampusLocalReadingAndKeepsGapsOrTopUpsOutOfTheDecrease() throws {
+        let value = PowerOption(id: "a", name: "A")
+        let room = PowerRoom(project: value, area: value, building: value, room: value)
+        let iso = ISO8601DateFormatter()
+        var history = CampusPowerHistory()
+        history.selected = room
+        for (stamp, balance) in [("2026-11-10T15:59:00Z", 12), ("2026-11-10T16:00:00Z", 11),
+                                 ("2026-11-11T08:00:00Z", 9), ("2026-11-13T00:00:00Z", 6),
+                                 ("2026-11-14T00:00:00Z", 40)] {
+            history.record(PowerReading(time: try XCTUnwrap(iso.date(from: stamp)), amount: Decimal(balance)), for: room)
+        }
+        XCTAssertEqual(history.daily.map(\.last.amount), [12, 9, 6, 40])
+        XCTAssertEqual(history.daily.map(\.decrease), [nil, 3, nil, nil])
+        XCTAssertEqual(history.recentChange, 34)
+    }
+
+    func testLogoutClearsOnlyTheOwnersSavedDeviceLocationAndPowerHistory() throws {
+        let suite = "campus-checkin-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let place = CheckInPlace(position: CLLocation(latitude: 34, longitude: 109))
+        for owner in ["a", "b"] {
+            try place.save(account: owner, defaults: defaults)
+            try CampusPowerHistory().save(account: owner, defaults: defaults)
+        }
+        CampusPowerHistory.clear(account: "a", defaults: defaults)
+        XCTAssertNil(try CheckInPlace.load(account: "a", defaults: defaults))
+        XCTAssertNil(defaults.data(forKey: "xatu.power.v1.a"))
+        XCTAssertEqual(try CheckInPlace.load(account: "b", defaults: defaults)?.latitude, 34)
+        XCTAssertNotNil(defaults.data(forKey: "xatu.power.v1.b"))
     }
 }

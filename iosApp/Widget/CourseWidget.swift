@@ -48,7 +48,9 @@ private struct CourseWidgetView: View {
             case .linked(let data):
                 if let data { agenda(data) }
                 else { Text("打开一校通添加课表").font(.headline) }
-            case .manual(let data): agenda(data)
+            case .manual(let data):
+                if let expiry = data.expires, entry.date < expiry { agenda(data) }
+                else { Text("打开一校通重新同步").font(.headline) }
             case .needsTransfer:
                 Text("打开一校通").font(.headline)
                 Text("在“提醒与小组件”中临时同步课表。").font(.caption)

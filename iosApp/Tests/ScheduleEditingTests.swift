@@ -1,0 +1,104 @@
+import XCTest
+@testable import XatuOne
+
+final class ScheduleEditingTests: XCTestCase {
+    private let term = SchoolTermDates(semesterStartDate: "2024-09-02", semesterTotalWeeks: 20)
+    private let course = TimetableCourse(name: "力学 | 001", teacher: "教师", position: "实验楼", day: 1,
+                                         startSection: 1, endSection: 2, weeks: [1, 3])
+
+    func testOldArchiveStillHasReadableTableAndDefaultDisplay() throws {
+        let old = #"{"selected":"秋季","semesters":{"秋季":{"semester":"秋季","dates":{"semesterStartDate":"2024-09-02","semesterTotalWeeks":20},"courses":[{"name":"力学 | 001","teacher":"教师","position":"实验楼","day":1,"startSection":1,"endSection":2,"weeks":[1,3]}],"slots":[{"number":1,"startTime":"08:20","endTime":"09:05"},{"number":2,"startTime":"09:15","endTime":"10:00"}]}}}"#
+        let archive = try JSONDecoder().decode(AccountTimetables.self, from: Data(old.utf8))
+        let table = try XCTUnwrap(archive.current)
+        XCTAssertEqual(table.title, "秋季")
+        XCTAssertEqual(table.courses, [course])
+        XCTAssertEqual(table.displayOptions, TimetableDisplay(showNumber: false, showTeacher: true, showLocation: true))
+        XCTAssertEqual(table.time(for: course), "08:20–10:00")
+    }
+
+    func testGuestOwnsItsTablesSeparatelyAndRenameKeepsSelection() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TimetableStore(directory: directory)
+        var archive = AccountTimetables()
+        try archive.create(name: " 草稿 ", dates: term)
+        let first = try XCTUnwrap(archive.selected)
+        XCTAssertThrowsError(try archive.create(name: "草稿", dates: term))
+        try archive.create(name: "第二张", dates: term)
+        let second = try XCTUnwrap(archive.selected)
+        let name = try archive.checkName("实验课", except: first)
+        archive.semesters[first]?.displayName = name
+        XCTAssertEqual(archive.current?.title, "第二张")
+        archive.delete(second)
+        XCTAssertEqual(archive.selected, first)
+        XCTAssertEqual(archive.current?.title, "实验课")
+        try store.save(archive, account: "0")
+        XCTAssertEqual(try store.load(account: "0"), archive)
+        XCTAssertNil(try store.load(account: String(repeating: "a", count: 64)).current)
+    }
+
+    func testBulkChangeCannotLeaveAPartiallyShiftedSchedule() throws {
+        var finalWeek = course
+        finalWeek.weeks = [20]
+        var table = CampusTimetable(semester: "秋季", dates: term, courses: [course, finalWeek], slots: TeachingSlot.campusDefaults)
+        XCTAssertThrowsError(try table.adjustCourses([0, 1], movingWeeksBy: 1, toDay: 5))
+        XCTAssertEqual(table.courses, [course, finalWeek])
+        try table.adjustCourses([0], movingWeeksBy: 1, toDay: 5)
+        XCTAssertEqual(table.courses[0].weeks, [2, 4])
+        XCTAssertEqual(table.courses[0].day, 5)
+        XCTAssertEqual(table.courses[1], finalWeek)
+        XCTAssertEqual(try TimetableCourse.parseWeeks("1-3，3、5", limit: 5), [1, 2, 3, 5])
+        XCTAssertThrowsError(try TimetableCourse.parseWeeks("3-1", limit: 5))
+        XCTAssertThrowsError(try TimetableCourse.parseWeeks("1,6", limit: 5))
+    }
+
+    func testMakeupUsesOriginalLessonButActualDaysTimeAndCustomOverride() throws {
+        let monday = try XCTUnwrap(SchoolCalendar.date("2024-09-02"))
+        let saturday = SchoolCalendar.add(5, to: monday)
+        var table = CampusTimetable(semester: "秋季", dates: term, courses: [course], slots: TeachingSlot.campusDefaults)
+        table.adjustments = ["2024-09-02": TimetableDayAdjustment(label: "放假"),
+                             "2024-09-07": TimetableDayAdjustment(label: "补课", lessonDate: "2024-09-02")]
+        table.comboSchedule = TimetableComboSchedule(publicSchedules: [
+            TimetableScheduleRule(name: "周末", startDate: "2024-09-07", endDate: "2024-09-07",
+                                  timeSlots: [TeachingSlot(number: 1, startTime: "08:10", endTime: "08:55")])])
+        XCTAssertTrue(table.courses(on: monday).isEmpty)
+        XCTAssertEqual(table.courses(on: saturday), [course])
+        XCTAssertEqual(table.coursesInWeek(containing: monday)[5], [course])
+        XCTAssertEqual(table.time(for: course, on: saturday), "08:10–10:00")
+        XCTAssertEqual(table.time(for: course, on: monday), "08:20–10:00")
+        var special = course
+        special.isCustomTime = true; special.customStartTime = "10:10"; special.customEndTime = "11:40"
+        XCTAssertEqual(table.time(for: special, on: saturday), "10:10–11:40")
+    }
+
+    func testResyncTargetPreservesItsPresentationAndOnlySameTermCalendar() throws {
+        var decorated = course
+        decorated.color = 5
+        var old = CampusTimetable(semester: "秋季", dates: term, courses: [decorated], slots: TeachingSlot.campusDefaults,
+                                  displayName: "我的课表", display: TimetableDisplay(showNumber: true))
+        old.dates.firstDayOfWeek = 7
+        old.adjustments = ["2024-09-02": TimetableDayAdjustment(label: "放假")]
+        old.comboSchedule = TimetableComboSchedule(name: "分日期作息", publicSchedules: [])
+        let other = CampusTimetable(semester: "其他", dates: term, courses: [], slots: TeachingSlot.campusDefaults)
+        var archive = AccountTimetables(selected: "target", semesters: ["target": old, "other": other])
+        var draft = TimetableDraft(semester: "秋季", courses: [course], slots: TeachingSlot.campusDefaults)
+        try archive.importCourses(draft, dates: term, into: "target")
+        XCTAssertEqual(archive.current?.adjustments, old.adjustments)
+        XCTAssertEqual(archive.current?.comboSchedule, old.comboSchedule)
+        XCTAssertEqual(archive.current?.courses.first?.color, 5)
+        draft.semester = "春季"
+        let spring = SchoolTermDates(semesterStartDate: "2025-02-17", semesterTotalWeeks: 18)
+        try archive.importCourses(draft, dates: spring, into: "target")
+        let saved = try XCTUnwrap(archive.current)
+        XCTAssertEqual(saved.title, "我的课表")
+        XCTAssertEqual(saved.semester, "春季")
+        XCTAssertEqual(saved.dates.semesterStartDate, "2025-02-17")
+        XCTAssertEqual(saved.dates.firstDayOfWeek, 7)
+        XCTAssertEqual(saved.display, old.display)
+        XCTAssertNil(saved.adjustments)
+        XCTAssertNil(saved.comboSchedule)
+        XCTAssertEqual(archive.semesters["other"], other)
+        XCTAssertThrowsError(try archive.importCourses(draft, dates: spring, into: "removed"))
+        XCTAssertEqual(archive.current, saved)
+    }
+}

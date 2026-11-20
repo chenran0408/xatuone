@@ -51,6 +51,7 @@ struct CampusTabStrip: View {
                     }
                 }
                 .buttonStyle(.plain).accessibilityLabel(item.title)
+                .accessibilityIdentifier("campus.tab." + item.rawValue)
                 .accessibilityAddTraits(active ? .isSelected : [])
             }
         }

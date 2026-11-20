@@ -141,7 +141,7 @@ struct AcademicCalendarScreen: View {
             if loading { ProgressView("正在读取校历") }
             if let error {
                 Text(error).foregroundStyle(.secondary)
-                Button("重试") { revision += 1 }
+                Button("重试") { revision += 1 }.disabled(scanning)
                 if copy == nil { Button("打开教务处校历") { session.open(AcademicCalendarPage.index, title: "校历") } }
             }
             if let copy {

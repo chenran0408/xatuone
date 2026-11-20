@@ -66,4 +66,19 @@ final class DeviceCourseTests: XCTestCase {
         XCTAssertEqual(result.map { $0.0 }, result.map { $0.0 }.sorted())
         XCTAssertEqual(result.first?.1.day, SchoolCalendar.add(1, to: first))
     }
+
+    func testTemporaryTransferIncludesTwoDaysAndOnlyOneSubsequentLesson() throws {
+        let monday = try XCTUnwrap(SchoolCalendar.date("2024-09-02"))
+        var table = fixture()
+        table.courses = (1...5).map { day in
+            var course = fixture().courses[0]
+            course.day = day
+            return course
+        }
+        let agenda = CourseDevicePlan.agenda(for: table, now: monday)
+        let copied = agenda.temporarySnapshot(at: monday)
+        XCTAssertEqual(copied.courses.map(\.day), (0...2).map { SchoolCalendar.add($0, to: monday) })
+        XCTAssertEqual(copied.expires, SchoolCalendar.add(2, to: monday))
+        XCTAssertNil(agenda.expires)
+    }
 }

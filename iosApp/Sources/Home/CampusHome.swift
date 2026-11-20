@@ -49,7 +49,7 @@ struct CampusHome: View {
                     } else { Button("打开课表",action:showCourses) }
                 } header: { Text("今日课程") }
                 Section {
-                    NavigationLink { AcademicExamsScreen() } label: {
+                    NavigationLink { AcademicExamsScreen(semesterID:exam?.semesterID) } label: {
                         Label {
                             VStack(alignment:.leading,spacing:3) {
                                 Text(exam?.title ?? "考试安排")

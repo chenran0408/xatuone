@@ -51,12 +51,18 @@ struct AcademicCache: Codable {
     static func nextExam(account: String, now: Date = Date(), directory: URL? = nil) throws -> AcademicUpcomingExam? {
         let cache = try load(account: account, directory: directory)
         let entries = cache.reports["exams"] ?? [:]
-        return entries.flatMap { term, snapshot in
-            snapshot.report.sections.flatMap(\.rows).compactMap { row -> AcademicUpcomingExam? in
-                guard let start = row.examStart, start >= now else { return nil }
-                return AcademicUpcomingExam(semesterID: term, title: row.title, start: start, room: row.value("考场") ?? "", updatedAt: snapshot.updatedAt)
+        var best: AcademicUpcomingExam?
+        for (term, snapshot) in entries {
+            for group in snapshot.report.sections {
+                for row in group.rows {
+                    guard let start = row.examStart, start >= now else { continue }
+                    if let best, start > best.start || (start == best.start && snapshot.updatedAt <= best.updatedAt) { continue }
+                    best = AcademicUpcomingExam(semesterID: term, title: row.title, start: start,
+                                                room: row.value("考场") ?? "", updatedAt: snapshot.updatedAt)
+                }
             }
-        }.min { $0.start == $1.start ? $0.updatedAt > $1.updatedAt : $0.start < $1.start }
+        }
+        return best
     }
 }
 

@@ -24,6 +24,7 @@ struct DeviceCourse: Codable, Equatable {
 struct CourseWidgetData: Codable, Equatable {
     let semester: String
     let courses: [DeviceCourse]
+    var expires: Date?
 
     func today(at date: Date) -> [DeviceCourse] {
         courses.filter { DeviceCourse.calendar.isDate($0.day, inSameDayAs: date) }
@@ -31,6 +32,14 @@ struct CourseWidgetData: Codable, Equatable {
 
     func next(at date: Date) -> DeviceCourse? {
         courses.first { ($0.start ?? .distantPast) > date }
+    }
+
+    func temporarySnapshot(at date: Date) -> CourseWidgetData {
+        let today = DeviceCourse.calendar.startOfDay(for: date)
+        let following = DeviceCourse.calendar.date(byAdding: .day, value: 2, to: today)!
+        var rows = courses.filter { $0.day >= today && $0.day < following }
+        if let next = courses.first(where: { $0.day >= following && $0.start != nil }) { rows.append(next) }
+        return CourseWidgetData(semester: semester, courses: rows, expires: following)
     }
 }
 
@@ -57,7 +66,8 @@ enum CourseWidgetExchange {
         }
         if let board = UIPasteboard(name: boardName, create: false),
            let bytes = board.data(forPasteboardType: payloadType),
-           let value = try? JSONDecoder().decode(CourseWidgetData.self, from: bytes) {
+           let value = try? JSONDecoder().decode(CourseWidgetData.self, from: bytes),
+           let expiry = value.expires, expiry > Date() {
             return .manual(value)
         }
         return .needsTransfer
@@ -74,7 +84,9 @@ enum CourseWidgetExchange {
             guard let board = UIPasteboard(name: boardName, create: true) else {
                 throw CocoaError(.fileWriteUnknown)
             }
-            board.setItems([[payloadType: try JSONEncoder().encode(data)]], options: [.localOnly: true])
+            let snapshot = data.temporarySnapshot(at: Date())
+            let bytes = try JSONEncoder().encode(snapshot)
+            board.setItems([[payloadType: bytes]], options: [.localOnly: true, .expirationDate: snapshot.expires!])
         } else if UIPasteboard(name: boardName, create: false) != nil {
             UIPasteboard.remove(withName: boardName)
         }

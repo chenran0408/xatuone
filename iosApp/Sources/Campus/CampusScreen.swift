@@ -96,6 +96,7 @@ private final class CampusLocation: NSObject, ObservableObject, CLLocationManage
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
             locating = true
+            position = nil
             manager.requestLocation()
         case .denied, .restricted: break
         @unknown default: error = "无法获取定位授权状态"
