@@ -2,6 +2,21 @@ import XCTest
 @testable import XatuOne
 
 final class DeviceCourseTests: XCTestCase {
+    func testInterruptedAccountSwitchRetriesNotificationCleanupAfterRelaunch() throws {
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let owner = CourseNotificationOwner(defaults: defaults)
+        owner.finish("first")
+        XCTAssertFalse(owner.beginSwitch(from: nil, to: "first"))
+        XCTAssertTrue(owner.beginSwitch(from: "first", to: "second"))
+        // The process stopped before the notification queue finished removing the first account.
+        let relaunched = CourseNotificationOwner(defaults: defaults)
+        XCTAssertTrue(relaunched.beginSwitch(from: nil, to: "second"))
+        relaunched.finish("second")
+        XCTAssertFalse(relaunched.beginSwitch(from: nil, to: "second"))
+    }
+
     private func fixture() -> CampusTimetable {
         let course = TimetableCourse(name: "自习", teacher: "", position: "A区", day: 1,
                                      startSection: 1, endSection: 1, weeks: [1, 2])
@@ -70,6 +85,7 @@ final class DeviceCourseTests: XCTestCase {
     func testTemporaryTransferIncludesTwoDaysAndOnlyOneSubsequentLesson() throws {
         let monday = try XCTUnwrap(SchoolCalendar.date("2024-09-02"))
         var table = fixture()
+        table.semester = "private timetable title"
         table.courses = (1...5).map { day in
             var course = fixture().courses[0]
             course.day = day
@@ -80,5 +96,6 @@ final class DeviceCourseTests: XCTestCase {
         XCTAssertEqual(copied.courses.map(\.day), (0...2).map { SchoolCalendar.add($0, to: monday) })
         XCTAssertEqual(copied.expires, SchoolCalendar.add(2, to: monday))
         XCTAssertNil(agenda.expires)
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(copied), as: UTF8.self).contains(table.semester))
     }
 }

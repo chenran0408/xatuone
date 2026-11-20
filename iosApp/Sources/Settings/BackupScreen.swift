@@ -17,7 +17,7 @@ struct CampusBackupScreen: View {
     var body: some View {
         Form {
             Section("本机文件") {
-                Button("导出全部课表与外观设置") {
+                Button("导出全部课表、外观与提醒设置") {
                     do { file = try CampusFile(contents()); exporting = true }
                     catch { status = error.localizedDescription }
                 }
@@ -64,11 +64,16 @@ struct CampusBackupScreen: View {
             Button("写入备份") { transfer(upload:true) }
             Button("取消",role:.cancel) {}
         }
-        .confirmationDialog("用备份中的 \(preview?.archive.semesters.count ?? 0) 张课表替换当前账号的课表与外观设置？",
+        .confirmationDialog("恢复 \(preview?.archive.semesters.count ?? 0) 张课表，替换当前账号的课表并应用备份中的\(preview?.reminders == nil ? "外观设置" : "外观和提醒设置")？",
                             isPresented:$confirmRestore,titleVisibility:.visible) {
             Button("恢复备份",role:.destructive) {
                 guard let preview, restoreOwner == session.timetableOwner else { return }
-                do { try preview.restore(owner:restoreOwner); status = "已恢复 \(preview.archive.semesters.count) 张课表"; self.preview = nil }
+                do {
+                    try preview.restore(owner:restoreOwner)
+                    CourseDeviceServices.shared.reloadReminderPreferences()
+                    status = "已恢复 \(preview.archive.semesters.count) 张课表"
+                    self.preview = nil
+                }
                 catch { status = error.localizedDescription }
             }
             Button("取消",role:.cancel) { preview = nil }

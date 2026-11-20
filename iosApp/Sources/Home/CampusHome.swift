@@ -38,8 +38,8 @@ struct CampusHome: View {
                         if let c = next {
                             Button { courseDetail = CourseDetail(course:c, table:tbl, date:now) } label: {
                                 VStack(alignment:.leading, spacing:6) {
-                                    Text(c.title).font(style == "compact" ? .headline : .title3.bold())
-                                    Text([tbl.time(for:c,on:now), c.position.isEmpty ? nil : c.position].compactMap { $0 }.joined(separator:" · "))
+                                    Text(tbl.displayOptions.showNumber ? c.name : c.title).font(style == "compact" ? .headline : .title3.bold())
+                                    Text([tbl.time(for:c,on:now) ?? c.sectionText, tbl.displayOptions.showLocation && !c.position.isEmpty ? c.position : nil].compactMap { $0 }.joined(separator:" · "))
                                         .font(.subheadline).foregroundStyle(.secondary)
                                 }.padding(.vertical,style == "compact" ? 1 : 4)
                             }.buttonStyle(.plain)
@@ -72,6 +72,9 @@ struct CampusHome: View {
                 if let problem { Text(problem).foregroundStyle(.red) }
             }
             .environment(\.timeZone,SchoolCalendar.calendar.timeZone)
+            .onChange(of: exam.map { $0.start < now } ?? false) { expired in
+                if expired { reload() }
+            }
         }
         .navigationTitle("首页")
         .sheet(item:$courseDetail) { CourseDetailSheet(item:$0) }

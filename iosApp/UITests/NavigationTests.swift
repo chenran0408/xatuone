@@ -75,4 +75,14 @@ final class NavigationTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 8), .completed)
         XCTAssertTrue(app.buttons["登录教务系统"].isHittable)
     }
+
+    func testCampusNetworkOpensThePlanServiceAndReturns() {
+        let app = launchSignedOut()
+        selectTab("校园", in: app)
+        app.buttons["校园网套餐，网页服务"].tap()
+        let bar = app.navigationBars["校园网套餐"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 8))
+        bar.buttons["关闭"].tap()
+        XCTAssertTrue(app.navigationBars["校园服务"].waitForExistence(timeout: 8))
+    }
 }

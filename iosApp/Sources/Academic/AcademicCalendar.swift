@@ -92,6 +92,11 @@ struct AcademicCalendarCopy: Codable {
     let updatedAt: Date
     var recognized: String?
 
+    var displayedRanges: [String] {
+        page.dateRanges.isEmpty ? AcademicCalendarPage.ranges(recognized ?? "") : page.dateRanges
+    }
+    var needsDateRecognition: Bool { page.dateRanges.isEmpty && recognized == nil }
+
     private static func file(_ directory: URL?) throws -> URL {
         let root = try directory ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         return root.appendingPathComponent("xatu-public-calendar.plist")
@@ -119,6 +124,7 @@ struct AcademicCalendarScreen: View {
     @State private var scanning = false
     @State private var scanError: String?
     @State private var scanID = 0
+    @State private var copied = false
     @State private var showImage = false
     @State private var revision = 0
 
@@ -127,8 +133,11 @@ struct AcademicCalendarScreen: View {
             if let copy {
                 let page = copy.page
                 Section(page.title) {
-                    let ranges = page.dateRanges.isEmpty ? AcademicCalendarPage.ranges(copy.recognized ?? "") : page.dateRanges
+                    let ranges = copy.displayedRanges
                     ForEach(ranges, id: \.self) { Text($0) }
+                    if ranges.isEmpty && copy.recognized != nil {
+                        Text("未识别到学期日期").foregroundStyle(.secondary)
+                    }
                     LabeledContent("上次更新", value: copy.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     if let image {
                         Button { showImage = true } label: {
@@ -147,7 +156,15 @@ struct AcademicCalendarScreen: View {
             if let copy {
                 Section("识别文字") {
                     if scanning { ProgressView("正在识别") }
-                    if let recognized = copy.recognized { Text(recognized.isEmpty ? "没有识别到文字" : recognized).textSelection(.enabled) }
+                    if let recognized = copy.recognized {
+                        Text(recognized.isEmpty ? "没有识别到文字" : recognized).textSelection(.enabled)
+                        if !recognized.isEmpty {
+                            Button(copied ? "已复制识别文字" : "复制识别文字") {
+                                UIPasteboard.general.string = recognized
+                                copied = true
+                            }
+                        }
+                    }
                     if let scanError { Text(scanError).foregroundStyle(.secondary) }
                     if !scanning && copy.recognized == nil { Button("识别校历文字") { scanID += 1 }.disabled(loading) }
                 }
@@ -156,7 +173,7 @@ struct AcademicCalendarScreen: View {
         .navigationTitle("校历")
         .toolbar { Button { revision += 1 } label: { Label("刷新校历", systemImage: "arrow.clockwise") }.disabled(loading || scanning) }
         .task(id: revision) {
-            loading = true; error = nil; scanError = nil
+            loading = true; error = nil; scanError = nil; copied = false
             // A damaged local copy must not prevent a fresh download.
             if copy == nil {
                 do {
@@ -177,6 +194,7 @@ struct AcademicCalendarScreen: View {
                 copy = updated; image = decoded; self.error = nil
             } catch { if Task.isCancelled { return }; self.error = error.localizedDescription }
             loading = false
+            if copy?.needsDateRecognition == true { scanID += 1 }
         }
         .task(id: scanID) {
             guard scanID > 0, let source = copy else { scanning = false; return }

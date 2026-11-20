@@ -12,6 +12,10 @@ private struct CourseProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CourseEntry) -> Void) {
+        if context.isPreview {
+            completion(placeholder(in: context))
+            return
+        }
         Task { @MainActor in completion(CourseEntry(date: Date(), source: CourseWidgetExchange.read())) }
     }
 
@@ -46,10 +50,10 @@ private struct CourseWidgetView: View {
             Label("一校通 · 课程", systemImage: "calendar").font(.caption.bold()).foregroundStyle(.secondary)
             switch entry.source {
             case .linked(let data):
-                if let data { agenda(data) }
+                if let data { agenda(data).privacySensitive() }
                 else { Text("打开一校通添加课表").font(.headline) }
             case .manual(let data):
-                if let expiry = data.expires, entry.date < expiry { agenda(data) }
+                if let expiry = data.expires, entry.date < expiry { agenda(data).privacySensitive() }
                 else { Text("打开一校通重新同步").font(.headline) }
             case .needsTransfer:
                 Text("打开一校通").font(.headline)
@@ -73,7 +77,7 @@ private struct CourseWidgetView: View {
                     Text(course.title).font(.subheadline).lineLimit(1)
                     Spacer(minLength: 0)
                     if !course.room.isEmpty { Text(course.room).font(.caption).lineLimit(1) }
-                }.privacySensitive()
+                }
             }
         }
         if let next = data.next(at: entry.date), let start = next.start {
@@ -81,7 +85,7 @@ private struct CourseWidgetView: View {
             let parts = DeviceCourse.calendar.dateComponents([.month, .day], from: start)
             let day = isToday ? "" : "\(parts.month!)/\(parts.day!) "
             Text("下一节 · \(day)\(DeviceCourse.clock(start))").font(.caption).foregroundStyle(.secondary)
-            Text(next.title).font(.subheadline.bold()).lineLimit(2).privacySensitive()
+            Text(next.title).font(.subheadline.bold()).lineLimit(2)
         } else {
             Text("暂无后续定时课程").font(.caption).foregroundStyle(.secondary)
         }

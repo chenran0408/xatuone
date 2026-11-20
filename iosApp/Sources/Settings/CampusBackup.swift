@@ -19,17 +19,22 @@ struct CampusBackup: Codable {
     let created: Date
     let archive: AccountTimetables
     let appearance: [String:String]
+    let reminders: CourseReminderPreferences?
 
     static let keys = ["xatu.appearance.mode", "xatu.appearance.style", "xatu.start.tab"]
     init(archive: AccountTimetables, defaults: UserDefaults = .standard) {
         format = "xatuone-iphone"; version = 1; created = Date()
         self.archive = archive
         appearance = Dictionary(uniqueKeysWithValues:Self.keys.compactMap { key in defaults.string(forKey:key).map { (key,$0) } })
+        reminders = CourseReminderPreferences(defaults: defaults)
     }
     static func read(_ bytes: Data) throws -> Self {
         let value = try JSONDecoder().decode(Self.self,from:bytes)
         guard value.format == "xatuone-iphone", value.version == 1,
               value.archive.selected.map({value.archive.semesters[$0] != nil}) ?? true else { throw BackupIssue.invalid }
+        if let reminders = value.reminders, !CourseReminderPreferences.minuteOptions.contains(reminders.minutes) {
+            throw BackupIssue.invalid
+        }
         for (key, table) in value.archive.semesters {
             guard !key.isEmpty else { throw BackupIssue.invalid }
             try CourseExchange.validate(table)
@@ -39,6 +44,7 @@ struct CampusBackup: Codable {
     func restore(owner: String, store: TimetableStore = .init(), defaults: UserDefaults = .standard) throws {
         try store.save(archive,account:owner)
         for key in Self.keys { defaults.set(appearance[key], forKey:key) }
+        reminders?.save(to: defaults)
     }
 }
 

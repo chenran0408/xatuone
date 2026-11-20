@@ -84,9 +84,16 @@ extension AccountTimetables {
         }
     }
 
+    func automaticTarget(for semester: String) -> String? {
+        if semesters[semester]?.semester == semester { return semester }
+        // The original key may now belong to a different term after an explicit replacement.
+        return semesters.first { key, table in key.hasPrefix(semester + "#") && table.semester == semester }?.key
+    }
+
     mutating func importCourses(_ draft: TimetableDraft, dates: SchoolTermDates, into target: String?) throws {
         if let target, semesters[target] == nil { throw ScheduleIssue.message("目标课表已删除") }
-        let key = target ?? draft.semester
+        let key = target ?? automaticTarget(for: draft.semester)
+            ?? (semesters[draft.semester] == nil ? draft.semester : draft.semester + "#" + UUID().uuidString)
         let previous = semesters[key], sameTerm = previous?.semester == draft.semester
         var config = dates
         config.firstDayOfWeek = previous?.dates.firstDayOfWeek

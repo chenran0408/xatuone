@@ -64,6 +64,30 @@ final class AcademicTests: XCTestCase {
         XCTAssertEqual(AcademicCalendarPage.ranges(text), ["2026年8月31日 至 2027年1月18日"])
     }
 
+    func testTeachingWeekOnlyShowsTotalFromTheOfficialCurrentWeekElement() {
+        let full = "<span>12</span><i>/26</i><strong>当前教学周</strong>"
+        XCTAssertEqual(AcademicParser.teachingWeek(full)?.current, 12)
+        XCTAssertEqual(AcademicParser.teachingWeek(full)?.total, 26)
+        XCTAssertNil(AcademicParser.teachingWeek("当前教学周：12")?.total)
+        XCTAssertNil(AcademicParser.teachingWeek("<span>12</span><i>/26</i> 教室利用率"))
+    }
+
+    func testCalendarUsesPrintedPeriodFirstThenReadsImageOnlyUntilOCRFinishes() {
+        let original = Data([7])
+        func copy(_ articleDates: [String], _ ocr: String?) -> AcademicCalendarCopy {
+            let page = AcademicCalendarPage(title: "校历", article: AcademicCalendarPage.index,
+                                            image: AcademicCalendarPage.index, dateRanges: articleDates)
+            return AcademicCalendarCopy(page: page, original: original, updatedAt: Date(), recognized: ocr)
+        }
+        let ocr = "2026年8月31日至2027年1月18日"
+        XCTAssertTrue(copy([], nil).needsDateRecognition)
+        XCTAssertFalse(copy([], "").needsDateRecognition)
+        XCTAssertTrue(copy([], "").displayedRanges.isEmpty)
+        XCTAssertEqual(copy([], ocr).displayedRanges, ["2026年8月31日 至 2027年1月18日"])
+        XCTAssertFalse(copy(["正文日期"], nil).needsDateRecognition)
+        XCTAssertEqual(copy(["正文日期"], ocr).displayedRanges, ["正文日期"])
+    }
+
     func testNextExamUsesFullSchoolTimeAndOnlyTheSignedInAccount() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

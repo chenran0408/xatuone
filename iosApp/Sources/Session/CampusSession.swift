@@ -4,19 +4,21 @@ import SwiftUI
 import WebKit
 
 enum CampusSessionError: LocalizedError {
-    case academicLoginRequired, paymentLoginRequired, invalidPage, http(Int)
+    case academicLoginRequired, paymentLoginRequired, invalidPage, wrongProfile, duplicateProfile, http(Int)
     var errorDescription: String? {
         switch self {
         case .academicLoginRequired: return "请登录教务系统"
         case .paymentLoginRequired: return "请登录缴费平台"
         case .invalidPage: return "学校返回了无法识别的页面"
+        case .wrongProfile: return "登录账号与当前账号不同，请使用原账号重新认证。"
+        case .duplicateProfile: return "这个账号已保存，请关闭登录页后在账号列表中选择。"
         case .http(let code): return "学校服务返回 HTTP \(code)"
         }
     }
 }
 
 struct CampusBrowser: Identifiable {
-    enum Kind { case academic, payment, service }
+    enum Kind { case academic, adding, payment, service }
     let id = UUID()
     let kind: Kind
     let title: String
@@ -35,12 +37,15 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     static let loginURL = URL(string: "https://authserver.xatu.edu.cn/authserver/login?service=http://jwgl2018.xatu.edu.cn/eams/homeExt.action")!
     private static let payBase = URL(string: "https://jfpay.xatu.edu.cn/api/")!
     private static let profileKey = "xatu.eams.active-profile"
-    @Published private(set) var accountID = UserDefaults.standard.string(forKey: CampusSession.profileKey) ?? ""
+    @Published private(set) var accountID: String
+    @Published private(set) var profiles: CampusProfiles
+    private let defaults: UserDefaults
     var timetableOwner: String { accountID.isEmpty ? "0" : accountID }
     @Published var browser: CampusBrowser?
     @Published var browserError: String?
     @Published private(set) var signingOut = false
-    private(set) var webView = WKWebView(frame: .zero)
+    private(set) var webView: WKWebView
+    private var draftStore: (id: UUID, store: WKWebsiteDataStore)?
     private var verifying: Task<Void, Error>?
     private var paymentMonitor: Task<Void, Never>?
     private var paymentCompleted: (() -> Void)?
@@ -56,9 +61,74 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         return URLSession(configuration: config, delegate: NoPaymentRedirect(), delegateQueue: nil)
     }()
 
-    override init() {
+    override convenience init() { self.init(defaults: .standard) }
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+        let id = defaults.string(forKey: Self.profileKey) ?? ""
+        let profiles = CampusProfiles(defaults: defaults, legacy: id)
+        accountID = id
+        self.profiles = profiles
+        webView = Self.makeView(store: Self.store(for: id, profiles: profiles))
         super.init()
         configure(webView)
+    }
+
+    private static func makeView(store: WKWebsiteDataStore) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = store
+        return WKWebView(frame: .zero, configuration: config)
+    }
+
+    private static func store(for id: String, profiles: CampusProfiles) -> WKWebsiteDataStore {
+        if #available(iOS 17.0, *) {
+            if id.isEmpty { return .nonPersistent() }
+            if let uuid = profiles.entries.first(where: { $0.id == id })?.storeID {
+                return WKWebsiteDataStore(forIdentifier: uuid)
+            }
+        }
+        return .default()
+    }
+
+    func renameCurrent(_ name: String) {
+        profiles.rename(id: accountID, to: name)
+        profiles.save(defaults)
+    }
+
+    @available(iOS 17.0, *)
+    func choose(_ profile: CampusProfile) {
+        guard !signingOut, profile.id != accountID, profiles.entries.contains(profile) else { return }
+        activate(profile.id, using: Self.makeView(store: Self.store(for:profile.id, profiles:profiles)))
+    }
+
+    private func invalidateRequests() {
+        sessionVersion += 1
+        verifying?.cancel(); verifying = nil
+        waiting?.1.resume(throwing: CancellationError()); waiting = nil
+        paymentGeneration = nil
+    }
+
+    private func activate(_ id: String, using view: WKWebView) {
+        invalidateRequests()
+        dismissBrowser()
+        webView.stopLoading(); webView.navigationDelegate = nil
+        webView = view; configure(view)
+        defaults.set(id, forKey: Self.profileKey)
+        accountID = id
+        paymentGeneration = UUID()
+    }
+
+    @available(iOS 17.0, *)
+    func addAccount() {
+        guard !signingOut else { return }
+        dismissBrowser()
+        let id = UUID()
+        let store = WKWebsiteDataStore(forIdentifier: id)
+        draftStore = (id,store)
+        let view = Self.makeView(store:store)
+        configure(view)
+        browser = CampusBrowser(kind: .adding, title: "教务登录", view: view)
+        view.load(URLRequest(url: Self.loginURL))
     }
 
     private func configure(_ view: WKWebView) {
@@ -88,6 +158,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
 
     func ensureAcademic() async throws {
         guard !signingOut else { throw CancellationError() }
+        if #available(iOS 17.0, *), accountID.isEmpty { throw CampusSessionError.academicLoginRequired }
         if let verifying { return try await verifying.value }
         let version = sessionVersion
         let task = Task { @MainActor in
@@ -106,11 +177,19 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
             if accountID != id {
                 paymentGeneration = nil
                 if let page = browser, page.kind != .academic { dismissBrowser() }
-                try await Self.clearPaymentCookies(in: WKWebsiteDataStore.default().httpCookieStore)
+                try await Self.clearPaymentCookies(in: webView.configuration.websiteDataStore.httpCookieStore)
                 try Task.checkCancellation()
                 guard version == sessionVersion else { throw CancellationError() }
-                UserDefaults.standard.set(id, forKey: Self.profileKey)
+                if #available(iOS 17.0, *), !accountID.isEmpty {
+                    await webView.configuration.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+                    throw CampusSessionError.wrongProfile
+                }
+                defaults.set(id, forKey: Self.profileKey)
                 accountID = id
+                profiles.remember(id:id,storeID:nil)
+                profiles.save(defaults)
+                paymentGeneration = UUID()
+            } else if paymentGeneration == nil {
                 paymentGeneration = UUID()
             }
         }
@@ -140,11 +219,18 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     }
 
     func academicHTML(_ path: String, form: [String:String]? = nil, checkingSession: Bool = false) async throws -> String {
-        guard Self.isAcademic(webView.url) else { throw CampusSessionError.academicLoginRequired }
+        let version = sessionVersion
+        let result = try await Self.academicHTML(path, form:form, checkingSession:checkingSession, view:webView)
+        guard version == sessionVersion else { throw CancellationError() }
+        return result
+    }
+
+    private static func academicHTML(_ path: String, form: [String:String]?, checkingSession: Bool, view: WKWebView) async throws -> String {
+        guard Self.isAcademic(view.url) else { throw CampusSessionError.academicLoginRequired }
         let url = try Self.academicURL(path)
         let args: [String:Any] = ["target":url.path + (url.query.map { "?" + $0 } ?? ""), "probe":checkingSession,
                                   "fields": form.map { $0 as Any } ?? NSNull()]
-        let result = try await webView.callAsyncJavaScript("""
+        let result = try await view.callAsyncJavaScript("""
             try {
                 const init = {credentials:'same-origin',cache:'no-store',redirect:probe ? 'manual' : 'follow'};
                 if (fields !== null) { init.method='POST'; init.body=new URLSearchParams(fields); }
@@ -169,15 +255,27 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
 
     func openAcademic() {
         guard !signingOut else { return }
+        if #available(iOS 17.0, *), accountID.isEmpty { addAccount(); return }
         dismissBrowser()
         browser = CampusBrowser(kind: .academic, title: "教务登录", view: webView)
         webView.load(URLRequest(url: Self.loginURL))
     }
 
     func finishAcademicLogin() async {
-        guard let page = browser, page.kind == .academic else { return }
+        guard let page = browser, page.kind == .academic || page.kind == .adding else { return }
         do {
-            guard Self.isAcademic(webView.url) else { throw CampusSessionError.academicLoginRequired }
+            guard Self.isAcademic(page.view.url) else { throw CampusSessionError.academicLoginRequired }
+            if page.kind == .adding, let draft = draftStore {
+                let html = try await Self.academicHTML("courseTableForStd.action?sf_request_type=ajax",form:nil,checkingSession:true,view:page.view)
+                let id = try Self.accountKey(in:html)
+                guard browser?.id == page.id, draftStore?.id == draft.id else { return }
+                guard !profiles.entries.contains(where: { $0.id == id }) else { throw CampusSessionError.duplicateProfile }
+                profiles.remember(id:id,storeID:draft.id)
+                profiles.save(defaults)
+                draftStore = nil
+                activate(id, using:page.view)
+                return
+            }
             try await ensureAcademic()
             if browser?.id == page.id { dismissBrowser() }
         } catch {
@@ -197,7 +295,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     private func presentService(_ url: URL, title: String, kind: CampusBrowser.Kind) {
         guard !signingOut, paymentGeneration != nil, ["https","http"].contains(url.scheme) else { return }
         dismissBrowser()
-        let view = WKWebView(frame:.zero)
+        let view = Self.makeView(store:webView.configuration.websiteDataStore)
         configure(view)
         browser = CampusBrowser(kind:kind,title:title,view:view)
         view.load(URLRequest(url:url))
@@ -207,7 +305,12 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         paymentMonitor?.cancel()
         paymentMonitor = nil
         paymentCompleted = nil
-        if browser?.kind != .academic { browser?.view.stopLoading() }
+        if browser?.kind != .academic && browser?.kind != .adding { browser?.view.stopLoading() }
+        if let draft = draftStore {
+            draftStore = nil
+            browser?.view.stopLoading()
+            Task { await draft.store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) }
+        }
         browser = nil
         browserError = nil
     }
@@ -237,7 +340,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
 
     private func paymentToken(for url: URL) async -> String? {
         guard Self.isPaymentOrigin(url), let host = url.host?.lowercased() else { return nil }
-        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
         return cookies.filter {
             let matchesPath = url.path == $0.path || url.path.hasPrefix($0.path.hasSuffix("/") ? $0.path : $0.path + "/")
             return $0.name == Self.payTokenName && Self.matchesCookieDomain($0, host: host) && matchesPath &&
@@ -304,19 +407,18 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     func logout() async throws {
         guard !signingOut else { return }
         signingOut = true
-        paymentGeneration = nil
-        sessionVersion += 1
-        verifying?.cancel(); verifying = nil
-        waiting?.1.resume(throwing:CancellationError()); waiting = nil
+        invalidateRequests()
         dismissBrowser()
+        let store = webView.configuration.websiteDataStore
         webView.stopLoading()
         webView.navigationDelegate = nil
-        webView = WKWebView(frame:.zero)
-        configure(webView)
         let oldOwner = accountID
-        UserDefaults.standard.removeObject(forKey:Self.profileKey)
+        profiles.remove(id:oldOwner)
+        profiles.save(defaults)
+        webView = Self.makeView(store:Self.store(for:"",profiles:profiles))
+        configure(webView)
+        defaults.removeObject(forKey:Self.profileKey)
         accountID = ""
-        let store = WKWebsiteDataStore.default()
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         paymentGeneration = UUID()
         signingOut = false
@@ -335,7 +437,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         }
         guard let page = browser, page.view === view else { return }
         browserError = nil
-        if page.kind == .academic && Self.isAcademic(view.url) { Task { await finishAcademicLogin() } }
+        if (page.kind == .academic || page.kind == .adding) && Self.isAcademic(view.url) { Task { await finishAcademicLogin() } }
         if page.kind == .payment { observePaymentLogin(page) }
     }
 
@@ -348,18 +450,23 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     func webView(_ view: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(view,navigation,error) }
     func webView(_ view: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(view,navigation,error) }
 
+    static func secureLoginRedirect(_ request: URLRequest) -> URL? {
+        guard request.httpMethod == "GET", let url = request.url, url.scheme == "http",
+              let host = url.host?.lowercased(), url.port == nil || url.port == 80,
+              host == "authserver.xatu.edu.cn" || (host == "self.xatu.edu.cn" && url.path == "/Self/sso_login"),
+              var parts = URLComponents(url:url,resolvingAgainstBaseURL:false) else { return nil }
+        parts.scheme = "https"; parts.port = nil
+        return parts.url
+    }
+
     func webView(_ view: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if url.scheme == "http" && url.host == "authserver.xatu.edu.cn" && action.request.httpMethod == "GET",
-           var parts = URLComponents(url:url,resolvingAgainstBaseURL:false) {
-            parts.scheme = "https"
-            if let secure = parts.url {
-                let pending = view === webView ? waiting : nil
-                decisionHandler(.cancel)
-                if let nav = view.load(URLRequest(url:secure)), let pending { waiting = (nav,pending.1) }
-                return
-            }
+        guard action.request.url != nil else { decisionHandler(.cancel); return }
+        if let secure = Self.secureLoginRedirect(action.request) {
+            let pending = view === webView ? waiting : nil
+            decisionHandler(.cancel)
+            if let nav = view.load(URLRequest(url:secure)), let pending { waiting = (nav,pending.1) }
+            return
         }
         decisionHandler(.allow)
     }

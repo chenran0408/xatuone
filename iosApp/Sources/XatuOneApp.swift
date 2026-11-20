@@ -52,13 +52,26 @@ private struct AccountScreen: View {
     @EnvironmentObject var session: CampusSession
     @State private var confirmLogout = false
     @State private var switching = false
+    @State private var renaming = false
+    @State private var newName = ""
     @State private var feedback: String?
     var body: some View {
         List {
             Section("教务账号") {
-                Label(session.accountID.isEmpty ? "尚未登录" : "已有教务账号", systemImage: "person.crop.circle")
+                Label(session.profiles.entries.first(where: { $0.id == session.accountID })?.label ?? "尚未登录", systemImage: "person.crop.circle")
                 Button(session.accountID.isEmpty ? "登录教务系统" : "重新认证") { session.openAcademic() }
-                if !session.accountID.isEmpty {
+                if #available(iOS 17.0, *) {
+                    ForEach(session.profiles.entries.filter { $0.id != session.accountID }) { profile in
+                        Button("切换至\(profile.label)") { session.choose(profile) }
+                    }
+                    if !session.accountID.isEmpty {
+                        Button("添加教务账号") { session.addAccount() }
+                        Button("修改账号备注") {
+                            newName = session.profiles.entries.first { $0.id == session.accountID }?.label ?? ""
+                            renaming = true
+                        }
+                    }
+                } else if !session.accountID.isEmpty {
                     Button("切换教务账号") { switching = true; confirmLogout = true }
                 }
             }
@@ -73,6 +86,11 @@ private struct AccountScreen: View {
         }
         .disabled(session.signingOut)
         .navigationTitle("我的")
+        .alert("账号备注", isPresented:$renaming) {
+            TextField("名称", text:$newName)
+            Button("取消",role:.cancel) {}
+            Button("保存") { session.renameCurrent(newName) }
+        }
         .confirmationDialog("退出当前账号并清除教务、宿舍和签到缓存？已同步课表将保留。", isPresented: $confirmLogout, titleVisibility: .visible) {
             Button(switching ? "退出并切换账号" : "退出登录", role: .destructive) {
                 let openNext = switching
@@ -116,7 +134,7 @@ private struct BrowserScreen: View {
             ToolbarItem(placement:.cancellationAction) { Button("关闭") { session.dismissBrowser() } }
             ToolbarItemGroup(placement:.primaryAction) {
                 if canGoBack { Button { page.view.goBack() } label: { Label("后退",systemImage:"chevron.backward") } }
-                if page.kind == .academic { Button("完成登录") { Task { await session.finishAcademicLogin() } } }
+                if page.kind == .academic || page.kind == .adding { Button("完成登录") { Task { await session.finishAcademicLogin() } } }
             }
         }
     }

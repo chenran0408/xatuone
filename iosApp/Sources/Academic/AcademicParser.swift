@@ -126,11 +126,20 @@ enum AcademicParser {
         }
     }
 
-    static func week(_ html: String) -> Int? {
-        let patterns = [#"<span>\s*(\d{1,2})\s*</span>\s*<i>\s*/\s*\d+\s*</i>[\s\S]{0,80}?当前教学周"#,
-                        #"当前教学周[\s\S]{0,80}?<span>\s*(\d{1,2})\s*</span>"#, #"当前教学周\s*[:：]?\s*(\d{1,2})"#]
-        return patterns.lazy.compactMap { captures($0, in: html).first.flatMap { Int($0[1]) } }.first
+    static func teachingWeek(_ html: String) -> (current: Int, total: Int?)? {
+        let value = #"<span>\s*(\d{1,2})\s*</span>\s*<i>\s*/\s*(\d{1,2})\s*</i>"#
+        for pattern in [value + #"[\s\S]{0,80}?当前教学周"#, #"当前教学周[\s\S]{0,80}?"# + value] {
+            if let m = captures(pattern, in: html).first, let current = Int(m[1]), let total = Int(m[2]) {
+                return (current, total)
+            }
+        }
+        for pattern in [#"当前教学周[\s\S]{0,80}?<span>\s*(\d{1,2})\s*</span>"#, #"当前教学周\s*[:：]?\s*(\d{1,2})"#] {
+            if let m = captures(pattern, in: html).first, let current = Int(m[1]) { return (current, nil) }
+        }
+        return nil
     }
+
+    static func week(_ html: String) -> Int? { teachingWeek(html)?.current }
 
     static var schoolCalendar: Calendar {
         var result = Calendar(identifier: .gregorian)

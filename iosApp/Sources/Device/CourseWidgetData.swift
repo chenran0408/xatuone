@@ -22,7 +22,6 @@ struct DeviceCourse: Codable, Equatable {
 }
 
 struct CourseWidgetData: Codable, Equatable {
-    let semester: String
     let courses: [DeviceCourse]
     var expires: Date?
 
@@ -39,7 +38,7 @@ struct CourseWidgetData: Codable, Equatable {
         let following = DeviceCourse.calendar.date(byAdding: .day, value: 2, to: today)!
         var rows = courses.filter { $0.day >= today && $0.day < following }
         if let next = courses.first(where: { $0.day >= following && $0.start != nil }) { rows.append(next) }
-        return CourseWidgetData(semester: semester, courses: rows, expires: following)
+        return CourseWidgetData(courses: rows, expires: following)
     }
 }
 

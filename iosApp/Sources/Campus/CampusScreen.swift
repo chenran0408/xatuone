@@ -17,7 +17,7 @@ private struct CampusWebPage: Identifiable {
     static let checkIn = Self("签到网页", "location", "https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/*default/index.do#/jrqd")
     static let daily = [
         Self("图书馆", "books.vertical", "https://lib.xatu.edu.cn/"),
-        Self("校园网", "wifi", "https://self.xatu.edu.cn/"),
+        Self("校园网套餐", "wifi", "https://self.xatu.edu.cn/Self/sso/packageChange"),
         Self("电费充值", "creditcard", "https://jfpay.xatu.edu.cn/casLogin/")
     ]
     static let services = [
@@ -31,7 +31,9 @@ struct CampusScreen: View {
     @EnvironmentObject private var session: CampusSession
     @State private var search = ""
     private func matches(_ title: String) -> Bool {
-        search.isEmpty || title.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines))
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || title.localizedCaseInsensitiveContains(query) ||
+            (title == "校园网套餐" && ["免费流量", "免费校园网"].contains { $0.localizedCaseInsensitiveContains(query) })
     }
     var body: some View {
         List {
@@ -74,6 +76,7 @@ struct CampusScreen: View {
 private final class CampusLocation: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager: CLLocationManager
     @Published private(set) var permission: CLAuthorizationStatus
+    @Published private(set) var accuracyPermission: CLAccuracyAuthorization
     @Published private(set) var position: CLLocation?
     @Published private(set) var locating = false
     @Published private(set) var error: String?
@@ -83,6 +86,7 @@ private final class CampusLocation: NSObject, ObservableObject, CLLocationManage
         let manager = CLLocationManager()
         self.manager = manager
         permission = manager.authorizationStatus
+        accuracyPermission = manager.accuracyAuthorization
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -105,6 +109,7 @@ private final class CampusLocation: NSObject, ObservableObject, CLLocationManage
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         permission = manager.authorizationStatus
+        accuracyPermission = manager.accuracyAuthorization
         if permission == .denied || permission == .restricted { position = nil; locating = false }
         if awaitingPermission, permission != .notDetermined {
             awaitingPermission = false
@@ -141,6 +146,9 @@ private struct CampusCheckIn: View {
             }
             Section("设备位置") {
                 LabeledContent("定位权限", value: permissionLabel)
+                if location.permission == .authorizedWhenInUse || location.permission == .authorizedAlways {
+                    LabeledContent("位置授权精度", value: location.accuracyPermission == .fullAccuracy ? "精确位置" : "大致位置")
+                }
                 if location.permission == .denied {
                     Button("前往系统设置") { openURL(URL(string: UIApplication.openSettingsURLString)!) }
                 } else if location.permission != .restricted {
@@ -148,13 +156,11 @@ private struct CampusCheckIn: View {
                     else { Button("获取当前位置") { location.locate() } }
                 }
                 if let position = location.position {
-                    LabeledContent("纬度", value: position.coordinate.latitude.formatted(.number.precision(.fractionLength(5))))
-                    LabeledContent("经度", value: position.coordinate.longitude.formatted(.number.precision(.fractionLength(5))))
-                    LabeledContent("定位时间", value: position.timestamp.formatted(date: .abbreviated, time: .standard))
+                    let place = CheckInPlace(position: position)
+                    coordinateFields(place)
                     if !session.accountID.isEmpty {
                         Button("保存设备位置") {
                             do {
-                                let place = CheckInPlace(position: position)
                                 try place.save(account: session.accountID)
                                 saved = place
                                 saveError = nil
@@ -166,9 +172,7 @@ private struct CampusCheckIn: View {
             }
             if let saved {
                 Section("已保存的位置") {
-                    LabeledContent("纬度", value: saved.latitude.formatted(.number.precision(.fractionLength(5))))
-                    LabeledContent("经度", value: saved.longitude.formatted(.number.precision(.fractionLength(5))))
-                    LabeledContent("定位时间", value: saved.time.formatted(date: .abbreviated, time: .standard))
+                    coordinateFields(saved)
                     Button("移除已保存位置", role: .destructive) {
                         CheckInPlace.clear(account: session.accountID)
                         self.saved = nil
@@ -182,6 +186,15 @@ private struct CampusCheckIn: View {
             do { saved = try CheckInPlace.load(account: session.accountID); saveError = nil }
             catch { saveError = error.localizedDescription }
         }
+    }
+
+    @ViewBuilder private func coordinateFields(_ place: CheckInPlace) -> some View {
+        LabeledContent("纬度", value: place.latitude.formatted(.number.precision(.fractionLength(5))))
+        LabeledContent("经度", value: place.longitude.formatted(.number.precision(.fractionLength(5))))
+        if let radius = place.horizontalAccuracy {
+            LabeledContent("水平精度", value: "约 \(radius.formatted(.number.precision(.fractionLength(0)))) 米")
+        }
+        LabeledContent("定位时间", value: place.time.formatted(date: .abbreviated, time: .standard))
     }
 
     private var permissionLabel: String {
@@ -200,10 +213,12 @@ struct CheckInPlace: Codable {
     let latitude: Double
     let longitude: Double
     let time: Date
+    let horizontalAccuracy: Double?
     init(position: CLLocation) {
         latitude = position.coordinate.latitude
         longitude = position.coordinate.longitude
         time = position.timestamp
+        horizontalAccuracy = position.horizontalAccuracy >= 0 ? position.horizontalAccuracy : nil
     }
     static func load(account: String, defaults: UserDefaults = .standard) throws -> Self? {
         guard !account.isEmpty, let bytes = defaults.data(forKey: "xatu.checkin.place.v1." + account) else { return nil }

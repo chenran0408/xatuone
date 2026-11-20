@@ -219,7 +219,7 @@ private struct AcademicServiceScreen: View {
                 value = try await loadAcademicCatalog(session)
             case .week:
                 let html = try await session.academicHTML("homeExt!main.action", form: nil)
-                guard let week = AcademicParser.week(html), let start = AcademicParser.firstMonday(week: week, today: Date()) else {
+                guard let week = AcademicParser.teachingWeek(html), let start = AcademicParser.firstMonday(week: week.current, today: Date()) else {
                     throw AcademicIssue("教务首页未提供当前教学周")
                 }
                 let format = DateFormatter()
@@ -227,7 +227,10 @@ private struct AcademicServiceScreen: View {
                 format.locale = Locale(identifier: "zh_CN")
                 format.timeZone = AcademicParser.schoolCalendar.timeZone
                 format.dateFormat = "yyyy年M月d日"
-                value = AcademicReport(highlights: [AcademicField("当前教学周", "第 \(week) 周"), AcademicField("推算第一周周一", format.string(from: start))])
+                var fields = [AcademicField("当前教学周", "第 \(week.current) 周")]
+                if let total = week.total { fields.append(AcademicField("教学周数", "\(total) 周")) }
+                fields.append(AcademicField("推算第一周周一", format.string(from: start)))
+                value = AcademicReport(highlights: fields)
             }
             try Task.checkCancellation()
             guard owner == session.accountID && selected == term else { return }

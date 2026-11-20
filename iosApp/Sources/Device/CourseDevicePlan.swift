@@ -22,7 +22,7 @@ enum CourseDevicePlan {
                 day = SchoolCalendar.add(1, to: day)
             }
         }
-        return CourseWidgetData(semester: table.semester, courses: courses)
+        return CourseWidgetData(courses: courses)
     }
 
     static func time(_ text: String, on day: Date) -> Date? {

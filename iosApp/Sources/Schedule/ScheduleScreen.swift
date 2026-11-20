@@ -4,7 +4,7 @@ struct ScheduleScreen: View {
     @EnvironmentObject private var session: CampusSession
     @StateObject private var model = ScheduleModel()
     @State private var date = Date()
-    @State private var weekly = false
+    @AppStorage("xatu.schedule.weekly") private var weekly = true
     @State private var detail: CourseDetail?
     @State private var chooseSyncTarget = false
 
@@ -41,7 +41,7 @@ struct ScheduleScreen: View {
                         tableHeader(table)
                         if weekly {
                             WeekTimetable(table: table, date: date) { course, day in
-                                detail = CourseDetail(course: course, table: table, date: day)
+                                detail = CourseDetail(course: course, table: table, date: day, tableKey: model.archive.selected)
                             }
                         } else {
                             List {
@@ -54,7 +54,7 @@ struct ScheduleScreen: View {
                                 else if courses.isEmpty { Text("当天没有课程").foregroundStyle(.secondary) }
                                 ForEach(courses.indices, id: \.self) { i in
                                     let course = courses[i]
-                                    Button { detail = CourseDetail(course: course, table: table, date: date) } label: {
+                                    Button { detail = CourseDetail(course: course, table: table, date: date, tableKey: model.archive.selected) } label: {
                                         VStack(alignment: .leading, spacing: 5) {
                                             HStack {
                                                 Capsule().fill(ScheduleColors.tint(course)).frame(width: 4)
@@ -110,7 +110,7 @@ struct ScheduleScreen: View {
             Button("取消", role: .cancel) {}
         }
         .sheet(item: $detail) { item in
-            CourseDetailSheet(item: item, model: model, owner: session.timetableOwner, key: model.archive.selected)
+            CourseDetailSheet(item: item, model: model, owner: session.timetableOwner, key: item.tableKey)
         }
         .onAppear { loadAccount() }
         .onChange(of: session.timetableOwner) { _ in detail = nil; chooseSyncTarget = false; loadAccount() }
@@ -265,6 +265,7 @@ struct CourseDetail: Identifiable {
     let course: TimetableCourse
     let table: CampusTimetable
     var date: Date?
+    var tableKey: String?
 }
 
 struct CourseDetailSheet: View {

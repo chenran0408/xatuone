@@ -97,4 +97,16 @@ final class CampusTests: XCTestCase {
         XCTAssertEqual(try CheckInPlace.load(account: "b", defaults: defaults)?.latitude, 34)
         XCTAssertNotNil(defaults.data(forKey: "xatu.power.v1.b"))
     }
+
+    func testSavedReferenceLocationPreservesReportedAccuracyAndReadsOlderRecords() throws {
+        let position = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 34, longitude: 109),
+                                  altitude: 0, horizontalAccuracy: 120, verticalAccuracy: -1, timestamp: Date())
+        let encoded = try JSONEncoder().encode(CheckInPlace(position: position))
+        let record = try JSONDecoder().decode(CheckInPlace.self, from: encoded)
+        XCTAssertEqual(record.horizontalAccuracy, 120)
+        let legacy = Data(#"{"latitude":34,"longitude":109,"time":123}"#.utf8)
+        let old = try JSONDecoder().decode(CheckInPlace.self, from: legacy)
+        XCTAssertNil(old.horizontalAccuracy)
+        XCTAssertEqual(old.latitude, 34)
+    }
 }

@@ -72,4 +72,40 @@ final class ExchangeTests: XCTestCase {
             XCTAssertThrowsError(try DAVCredential(address:url).request(method:"GET"))
         }
     }
+
+    func testBackupRestoresOnlyReminderPreferencesAndPreservesThemForLegacyFiles() throws {
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TimetableStore(directory: directory)
+        defaults.set(true, forKey: "courseReminders.enabled")
+        defaults.set(15, forKey: "courseReminders.minutes")
+        defaults.set("source-only-marker", forKey: "courseReminders.owner")
+        let bytes = try JSONEncoder().encode(CampusBackup(archive: AccountTimetables(), defaults: defaults))
+        var file = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String:Any])
+        let preferences = try XCTUnwrap(file["reminders"] as? [String:Any])
+        XCTAssertEqual(Set(preferences.keys), ["enabled", "minutes"])
+        XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains("source-only-marker"))
+
+        defaults.set(false, forKey: "courseReminders.enabled")
+        defaults.set(30, forKey: "courseReminders.minutes")
+        defaults.set("destination-marker", forKey: "courseReminders.owner")
+        try CampusBackup.read(bytes).restore(owner: "a0", store: store, defaults: defaults)
+        XCTAssertTrue(defaults.bool(forKey: "courseReminders.enabled"))
+        XCTAssertEqual(defaults.integer(forKey: "courseReminders.minutes"), 15)
+        XCTAssertEqual(defaults.string(forKey: "courseReminders.owner"), "destination-marker")
+
+        file["reminders"] = ["enabled": true, "minutes": -1]
+        XCTAssertThrowsError(try CampusBackup.read(JSONSerialization.data(withJSONObject: file)))
+        file.removeValue(forKey: "reminders")
+        defaults.set(false, forKey: "courseReminders.enabled")
+        defaults.set(5, forKey: "courseReminders.minutes")
+        let legacy = try CampusBackup.read(JSONSerialization.data(withJSONObject: file))
+        XCTAssertNil(legacy.reminders)
+        try legacy.restore(owner: "a0", store: store, defaults: defaults)
+        XCTAssertFalse(defaults.bool(forKey: "courseReminders.enabled"))
+        XCTAssertEqual(defaults.integer(forKey: "courseReminders.minutes"), 5)
+    }
 }

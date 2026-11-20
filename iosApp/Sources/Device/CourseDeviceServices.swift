@@ -3,18 +3,50 @@ import SwiftUI
 import UserNotifications
 import WidgetKit
 
+struct CourseReminderPreferences: Codable, Equatable {
+    static let minuteOptions = [0, 5, 10, 15, 30, 60]
+    var enabled: Bool
+    var minutes: Int
+
+    init(defaults: UserDefaults) {
+        enabled = defaults.bool(forKey: "courseReminders.enabled")
+        minutes = defaults.object(forKey: "courseReminders.minutes") as? Int ?? 10
+    }
+
+    func save(to defaults: UserDefaults) {
+        defaults.set(enabled, forKey: "courseReminders.enabled")
+        defaults.set(minutes, forKey: "courseReminders.minutes")
+    }
+}
+
+struct CourseNotificationOwner {
+    let defaults: UserDefaults
+    private static let key = "courseReminders.owner"
+
+    func beginSwitch(from previous: String?, to next: String) -> Bool {
+        guard previous != next, previous != nil || defaults.string(forKey: Self.key) != next else { return false }
+        // A missing marker makes the next launch retry interrupted notification cleanup.
+        defaults.removeObject(forKey: Self.key)
+        return true
+    }
+
+    func finish(_ account: String) { defaults.set(account, forKey: Self.key) }
+}
+
 @MainActor
 final class CourseDeviceServices: ObservableObject {
     static let shared = CourseDeviceServices()
 
-    @Published private(set) var enabled = UserDefaults.standard.bool(forKey: "courseReminders.enabled")
-    @Published private(set) var minutes = UserDefaults.standard.object(forKey: "courseReminders.minutes") as? Int ?? 10
+    @Published private var preferences = CourseReminderPreferences(defaults: .standard)
+    var enabled: Bool { preferences.enabled }
+    var minutes: Int { preferences.minutes }
     @Published private(set) var notificationMessage = ""
     @Published private(set) var widgetMessage = ""
     @Published private(set) var askingPermission = false
     @Published private(set) var hasTimetable = false
 
     private let center = UNUserNotificationCenter.current()
+    private let notificationOwner = CourseNotificationOwner(defaults: .standard)
     private let prefix = "com.xatuone.campus.course."
     private var owner: String?
     private var temporaryOwner: String?
@@ -24,16 +56,17 @@ final class CourseDeviceServices: ObservableObject {
     private var clearDelivered = false
 
     func refresh(account: String) {
-        let defaults = UserDefaults.standard
         if owner != account {
-            if defaults.string(forKey: "courseReminders.owner") != account {
+            if notificationOwner.beginSwitch(from: owner, to: account) {
+                let slots = (0..<CourseDevicePlan.reminderLimit).map { self.prefix + String($0) }
+                center.removePendingNotificationRequests(withIdentifiers: slots)
+                center.removeDeliveredNotifications(withIdentifiers: slots)
                 clearDelivered = true
                 // Clear the previous owner's presentation before loading the replacement timetable.
                 agenda = nil
                 hasTimetable = false
                 temporaryOwner = nil
                 publishWidget()
-                defaults.set(account, forKey: "courseReminders.owner")
             }
             temporaryOwner = nil
             owner = account
@@ -91,14 +124,23 @@ final class CourseDeviceServices: ObservableObject {
         } else {
             clearDelivered = true
         }
-        enabled = value
-        UserDefaults.standard.set(value, forKey: "courseReminders.enabled")
+        preferences.enabled = value
+        preferences.save(to: .standard)
         schedule()
     }
 
     func setMinutes(_ value: Int) {
-        minutes = value
-        UserDefaults.standard.set(value, forKey: "courseReminders.minutes")
+        preferences.minutes = value
+        preferences.save(to: .standard)
+        schedule()
+    }
+
+    func reloadReminderPreferences() {
+        let restored = CourseReminderPreferences(defaults: .standard)
+        guard preferences != restored else { return }
+        if preferences.enabled && !restored.enabled { clearDelivered = true }
+        preferences = restored
+        // Scheduling checks existing authorization. Restoring preferences never requests it.
         schedule()
     }
 
@@ -148,7 +190,10 @@ final class CourseDeviceServices: ObservableObject {
                 } else {
                     notificationMessage = enabled ? "添加或同步课表后会安排提醒。" : "提醒已关闭。"
                 }
-                if pass == revision { break }
+                if pass == revision {
+                    if let owner { notificationOwner.finish(owner) }
+                    break
+                }
             }
             running = false
         }
@@ -166,12 +211,17 @@ struct CourseReminderSettings: View {
                     Task { await services.setEnabled(value) }
                 })).disabled(services.askingPermission)
                 Picker("提前提醒", selection: Binding(get: { services.minutes }, set: services.setMinutes)) {
-                    ForEach([0, 5, 10, 15, 30, 60], id: \.self) { minutes in
+                    ForEach(CourseReminderPreferences.minuteOptions, id: \.self) { minutes in
                         Text(minutes == 0 ? "上课时" : "\(minutes) 分钟").tag(minutes)
                     }
                 }
-                Button("打开系统通知设置") {
-                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                Button("系统通知权限") {
+                    Task {
+                        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+                        if services.enabled && status == .notDetermined {
+                            await services.setEnabled(true)
+                        } else if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                    }
                 }
             } header: { Text("课程提醒") } footer: {
                 Text(services.notificationMessage + " 重新打开应用会补充后续提醒。")

@@ -88,8 +88,8 @@ final class ScheduleModel: ObservableObject {
     }
 
     func previous(for draft: TimetableDraft) -> CampusTimetable? {
-        let existing = archive.semesters[target ?? draft.semester]
-        return existing?.semester == draft.semester ? existing : nil
+        let key = target ?? archive.automaticTarget(for: draft.semester)
+        return draft.matchingPrevious(key.flatMap { archive.semesters[$0] })
     }
 
     func reply(_ index: Int?) {

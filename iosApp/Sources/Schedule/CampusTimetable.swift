@@ -81,8 +81,17 @@ struct TimetableDraft: Decodable {
 
     var lastWeek: Int { courses.flatMap(\.weeks).max() ?? 1 }
 
+    func matchingPrevious(_ table: CampusTimetable?) -> CampusTimetable? {
+        guard let table, let start = SchoolCalendar.date(table.dates.semesterStartDate) else { return nil }
+        let calendar = SchoolCalendar.calendar
+        let autumn = calendar.component(.month, from: start) >= 7
+        let year = calendar.component(.year, from: start) - (autumn ? 0 : 1)
+        let term = autumn ? "秋季" : "春季"
+        return semester == "\(year)-\(year + 1)学年 \(term)学期" ? table : nil
+    }
+
     func usableDates(previous: CampusTimetable?) -> SchoolTermDates? {
-        let candidate = config ?? (previous?.semester == semester ? previous?.dates : nil)
+        let candidate = config ?? matchingPrevious(previous)?.dates
         guard let dates = candidate, SchoolCalendar.date(dates.semesterStartDate) != nil,
               dates.semesterTotalWeeks >= lastWeek else { return nil }
         return dates

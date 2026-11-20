@@ -110,4 +110,37 @@ final class ScheduleEditingTests: XCTestCase {
         XCTAssertThrowsError(try archive.importCourses(draft, dates: spring, into: "removed"))
         XCTAssertEqual(archive.current, saved)
     }
+
+    func testAutomaticSyncCannotOverwriteRepurposedSemesterTable() throws {
+        var archive = AccountTimetables()
+        var autumn = TimetableDraft(semester: "2024-2025学年 秋季学期", courses: [course], slots: TeachingSlot.campusDefaults)
+        var spring = autumn
+        spring.semester = "2024-2025学年 春季学期"
+        let springDates = SchoolTermDates(semesterStartDate: "2025-02-17", semesterTotalWeeks: 20)
+        try archive.importCourses(autumn, dates: term, into: nil)
+        let initial = try XCTUnwrap(archive.selected)
+        try archive.importCourses(spring, dates: springDates, into: initial)
+        let replaced = try XCTUnwrap(archive.current)
+        XCTAssertNil(archive.automaticTarget(for: autumn.semester))
+        try archive.importCourses(autumn, dates: term, into: nil)
+        let alternate = try XCTUnwrap(archive.selected)
+        XCTAssertNotEqual(alternate, initial)
+        autumn.courses[0].position = "新教室"
+        try archive.importCourses(autumn, dates: term, into: nil)
+        XCTAssertEqual(archive.selected, alternate)
+        XCTAssertEqual(archive.automaticTarget(for: autumn.semester), alternate)
+        XCTAssertEqual(archive.semesters.count, 2)
+        XCTAssertEqual(archive.semesters[initial], replaced)
+        XCTAssertEqual(archive.current?.courses.first?.position, "新教室")
+    }
+
+    func testHistoricalSyncUsesTheConfiguredTermDatesEvenAfterEditingTable() {
+        let autumn = TimetableDraft(semester: "2024-2025学年 秋季学期", courses: [course], slots: TeachingSlot.campusDefaults)
+        var table = CampusTimetable(semester: "手动课表", dates: term, courses: [], slots: TeachingSlot.campusDefaults)
+        XCTAssertEqual(autumn.usableDates(previous: table), term)
+        table.semester = autumn.semester
+        table.dates.semesterStartDate = "2025-02-17"
+        XCTAssertNil(autumn.matchingPrevious(table))
+        XCTAssertNil(autumn.usableDates(previous: table))
+    }
 }
