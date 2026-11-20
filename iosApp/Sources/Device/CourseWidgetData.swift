@@ -50,11 +50,20 @@ enum WidgetSource {
 enum CourseWidgetExchange {
     static let kind = "XatuOneCourseWidget"
     private static let group = "group.com.xatuone.campus"
-    private static let boardName = UIPasteboard.Name("com.xatuone.campus.widget-transfer.v1")
+    // Self-signing can install multiple copies under the same team with different app IDs.
+    static func hostIdentifier(for bundleURL: URL) -> String? {
+        let app = bundleURL.pathExtension == "appex"
+            ? bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+            : bundleURL
+        return Bundle(url: app)?.bundleIdentifier
+    }
+    private static let hostID = hostIdentifier(for: Bundle.main.bundleURL)
+    private static let boardName = hostID.map { UIPasteboard.Name($0 + ".course-widget-transfer") }
     private static let payloadType = "com.xatuone.campus.widget-agenda"
     private static var file: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
-            .appendingPathComponent("course-widget.json")
+        guard let hostID else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
+            .appendingPathComponent("course-widget-" + hostID + ".json")
     }
     static var hasContainer: Bool { file != nil }
 
@@ -63,7 +72,7 @@ enum CourseWidgetExchange {
             let data = try? Data(contentsOf: file)
             return .linked(data.flatMap { try? JSONDecoder().decode(CourseWidgetData.self, from: $0) })
         }
-        if let board = UIPasteboard(name: boardName, create: false),
+        if let boardName, let board = UIPasteboard(name: boardName, create: false),
            let bytes = board.data(forPasteboardType: payloadType),
            let value = try? JSONDecoder().decode(CourseWidgetData.self, from: bytes),
            let expiry = value.expires, expiry > Date() {
@@ -74,19 +83,24 @@ enum CourseWidgetExchange {
 
     static func publish(_ data: CourseWidgetData?, allowTemporary: Bool) throws {
         if let file {
+            // Earlier builds wrote a single, unscoped snapshot into this app group.
+            let legacy = file.deletingLastPathComponent().appendingPathComponent("course-widget.json")
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                try FileManager.default.removeItem(at: legacy)
+            }
             if let data {
                 try JSONEncoder().encode(data).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             } else if FileManager.default.fileExists(atPath: file.path) {
                 try FileManager.default.removeItem(at: file)
             }
         } else if allowTemporary, let data {
-            guard let board = UIPasteboard(name: boardName, create: true) else {
+            guard let boardName, let board = UIPasteboard(name: boardName, create: true) else {
                 throw CocoaError(.fileWriteUnknown)
             }
             let snapshot = data.temporarySnapshot(at: Date())
             let bytes = try JSONEncoder().encode(snapshot)
             board.setItems([[payloadType: bytes]], options: [.localOnly: true, .expirationDate: snapshot.expires!])
-        } else if UIPasteboard(name: boardName, create: false) != nil {
+        } else if let boardName, UIPasteboard(name: boardName, create: false) != nil {
             UIPasteboard.remove(withName: boardName)
         }
     }

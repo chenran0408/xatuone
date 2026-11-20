@@ -2,6 +2,15 @@ import XCTest
 @testable import XatuOne
 
 final class DeviceCourseTests: XCTestCase {
+    @MainActor
+    func testWidgetAndHostUseTheInstalledAppsIdentifierForSharing() throws {
+        let app = Bundle.main.bundleURL
+        let widget = app.appendingPathComponent("PlugIns/CourseWidget.appex")
+        let identifier = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        XCTAssertEqual(CourseWidgetExchange.hostIdentifier(for: app), identifier)
+        XCTAssertEqual(CourseWidgetExchange.hostIdentifier(for: widget), identifier)
+    }
+
     func testInterruptedAccountSwitchRetriesNotificationCleanupAfterRelaunch() throws {
         let suite = UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
