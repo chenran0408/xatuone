@@ -66,9 +66,18 @@ final class ScheduleEditingTests: XCTestCase {
         XCTAssertEqual(table.coursesInWeek(containing: monday)[5], [course])
         XCTAssertEqual(table.time(for: course, on: saturday), "08:10–10:00")
         XCTAssertEqual(table.time(for: course, on: monday), "08:20–10:00")
+        let days = (0..<7).map { SchoolCalendar.add($0, to: monday) }
+        let axis = table.weekPeriods(days: days, coursesByDay: table.coursesInWeek(containing: monday))
+        XCTAssertNil(axis.first?.commonSlot)
+        XCTAssertEqual(axis[1].commonSlot?.startTime, "09:15")
         var special = course
         special.isCustomTime = true; special.customStartTime = "10:10"; special.customEndTime = "11:40"
         XCTAssertEqual(table.time(for: special, on: saturday), "10:10–11:40")
+        special.startSection = 13; special.endSection = 13
+        table.courses.append(special)
+        let updated = table.weekPeriods(days: days, coursesByDay: table.coursesInWeek(containing: monday))
+        XCTAssertEqual(updated.last?.number, 13)
+        XCTAssertNil(updated.last?.commonSlot)
     }
 
     func testResyncTargetPreservesItsPresentationAndOnlySameTermCalendar() throws {

@@ -30,10 +30,38 @@ jobs:
         id: tests
         working-directory: iosApp
         run: |
-          device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; ds=json.load(sys.stdin)["devices"]; print(next(d["udid"] for rt,items in sorted(ds.items(),reverse=True) if ".iOS-" in rt for d in items if d["name"].startswith("iPhone")))' )"
-          xcodebuild test -quiet -project XatuOne.xcodeproj -scheme XatuOne -configuration Debug \
-            -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
-            -derivedDataPath "$RUNNER_TEMP/ios-tests" -resultBundlePath "$RUNNER_TEMP/XatuOneTests.xcresult"
+          read -r model runtime <<<"$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["deviceTypeIdentifier"] + " " + r for r, rows in sorted(devices.items(), reverse=True)
+                     if ".iOS-" in r for d in rows if d["name"].startswith("iPhone")))')"
+          device="$(xcrun simctl create XatuOne-EventKit-CI "$model" "$runtime")"
+          trap 'xcrun simctl delete "$device"' EXIT
+          xcrun simctl bootstatus "$device" -b
+          build="$RUNNER_TEMP/ios-tests"
+          result="$RUNNER_TEMP/XatuOneTests.xcresult"
+          args=(-quiet -project XatuOne.xcodeproj -scheme XatuOne -configuration Debug
+                -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO -derivedDataPath "$build")
+          xcodebuild build-for-testing "${args[@]}"
+          xcrun simctl install "$device" "$build/Build/Products/Debug-iphonesimulator/XatuOne.app"
+          xcrun simctl privacy "$device" grant calendar com.xatuone.campus
+          TEST_RUNNER_XATU_EVENTKIT_CI_DEVICE="$device" xcodebuild test-without-building "${args[@]}" -resultBundlePath "$result"
+          xcrun xcresulttool get test-results tests --path "$result" > "$RUNNER_TEMP/xatu-test-tree.json"
+          python3 - "$RUNNER_TEMP/xatu-test-tree.json" <<'PY'
+          import json, sys
+          def visit(node):
+              yield node
+              for child in node.get("children", []):
+                  yield from visit(child)
+          with open(sys.argv[1]) as file:
+              roots = json.load(file)["testNodes"]
+          target = "testRepeatedSyncMoveAndDeletePreserveUnmanagedEvents"
+          matches = [node for root in roots for node in visit(root) if node.get("nodeType") == "Test Case"
+                     and node.get("nodeIdentifier", "").rsplit("/", 1)[-1].removesuffix("()") == target]
+          if not any(node.get("result") == "Passed" for node in matches):
+              sys.exit("The EventKit integration test did not pass on the dedicated simulator.")
+          print("EventKit calendar integration passed on the dedicated iPhone simulator.")
+          PY
       - name: Test results
         if: always() && steps.tests.outcome != 'skipped'
         run: |

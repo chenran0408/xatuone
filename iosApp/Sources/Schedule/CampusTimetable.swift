@@ -32,6 +32,13 @@ struct TeachingSlot: Codable, Equatable {
     var alias: String?
 }
 
+struct WeeklyTeachingPeriod: Identifiable {
+    let number: Int
+    let alias: String?
+    let commonSlot: TeachingSlot?
+    var id: Int { number }
+}
+
 struct SchoolTermDates: Codable, Equatable {
     var semesterStartDate: String
     var semesterTotalWeeks: Int
@@ -173,6 +180,20 @@ struct CampusTimetable: Codable, Equatable {
         else { return slots }
         if slots.isEmpty { return rule.timeSlots }
         return slots.map { base in rule.timeSlots.first(where: { $0.number == base.number }) ?? base }
+    }
+
+    func weekPeriods(days: [Date], coursesByDay: [[TimetableCourse]]) -> [WeeklyTeachingPeriod] {
+        let daily = days.map { slots(on: $0) }
+        // An imported custom-time course may have no corresponding row in the saved period table.
+        let numbers = Set(daily.flatMap { $0.map(\.number) } + coursesByDay.flatMap { $0.map(\.startSection) })
+        return numbers.sorted().map { number in
+            let slots = daily.compactMap { $0.first { $0.number == number } }
+            let first = slots.first
+            let uniform = slots.count == days.count && slots.allSatisfy {
+                $0.startTime == first?.startTime && $0.endTime == first?.endTime
+            }
+            return WeeklyTeachingPeriod(number: number, alias: first?.alias, commonSlot: uniform ? first : nil)
+        }
     }
 
     func time(for course: TimetableCourse, on date: Date? = nil) -> String? {

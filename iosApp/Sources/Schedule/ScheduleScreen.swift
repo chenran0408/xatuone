@@ -192,15 +192,9 @@ private struct WeekTimetable: View {
     var body: some View {
         let first = table.startOfWeek(containing: date)
         let days = (0..<7).map { SchoolCalendar.add($0, to: first) }
-        let dailySlots = days.map { table.slots(on: $0) }
-        let axis = dailySlots[0]
-        let varying = Set(axis.compactMap { slot -> Int? in
-            dailySlots.dropFirst().contains { slots in
-                guard let other = slots.first(where: { $0.number == slot.number }) else { return true }
-                return slot.startTime != other.startTime || slot.endTime != other.endTime
-            } ? slot.number : nil
-        })
         let dayCourses = table.coursesInWeek(containing: date)
+        let axis = table.weekPeriods(days: days, coursesByDay: dayCourses)
+        let varying = Set(axis.filter { $0.commonSlot == nil }.map(\.number))
         ScrollView([.horizontal, .vertical]) {
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
@@ -214,43 +208,20 @@ private struct WeekTimetable: View {
                          .foregroundStyle(SchoolCalendar.calendar.isDateInToday(shown) ? Color.accentColor : Color.primary)
                     }
                 }
-                ForEach(axis, id: \.number) { slot in
+                ForEach(axis) { slot in
                     GridRow(alignment: .top) {
                         VStack(spacing: 4) {
                             Text(slot.alias ?? "\(slot.number)").bold()
-                            if !varying.contains(slot.number) { Text(slot.startTime); Text(slot.endTime) }
+                            if let common = slot.commonSlot { Text(common.startTime); Text(common.endTime) }
                         }
                             .font(.caption.monospacedDigit()).frame(minWidth: 45, minHeight: 46)
-                            .accessibilityLabel(varying.contains(slot.number) ? "第 \(slot.number) 节" : "第 \(slot.number) 节，\(slot.startTime) 至 \(slot.endTime)")
+                            .accessibilityLabel(slot.commonSlot.map { "第 \(slot.number) 节，\($0.startTime) 至 \($0.endTime)" } ?? "第 \(slot.number) 节")
                         ForEach(1...7, id: \.self) { day in
                             let items = dayCourses[day - 1].filter { ($0.startSection...$0.endSection).contains(slot.number) }
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(items.indices, id: \.self) { i in
                                     let course = items[i]
-                                    let showsTime = course.isCustomTime == true || varying.contains { (course.startSection...course.endSection).contains($0) }
-                                    let time = showsTime ? table.time(for: course, on: days[day - 1]) : nil
-                                    Button { select(course, days[day - 1]) } label: {
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            if course.startSection == slot.number {
-                                                Text(table.displayOptions.showNumber ? course.name : course.title).font(.caption.bold())
-                                                if let time { Text(time).font(.caption2.monospacedDigit()) }
-                                                if table.displayOptions.showTeacher && !course.teacher.isEmpty {
-                                                    Text(course.teacher).font(.caption2).foregroundStyle(.secondary)
-                                                }
-                                                if table.displayOptions.showLocation && !course.position.isEmpty {
-                                                    Text(course.position).font(.caption2).foregroundStyle(.secondary)
-                                                }
-                                            } else {
-                                                Image(systemName: "arrow.down").font(.caption)
-                                            }
-                                        }.padding(5).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                         .background(ScheduleColors.tint(course).opacity(0.17), in: RoundedRectangle(cornerRadius: 6))
-                                    }.buttonStyle(.plain)
-                                     .accessibilityLabel([table.displayOptions.showNumber ? course.name : course.title,
-                                                          course.sectionText, time,
-                                                          table.displayOptions.showTeacher ? course.teacher : nil,
-                                                          table.displayOptions.showLocation ? course.position : nil]
-                                         .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "，"))
+                                    courseButton(course, period: slot.number, date: days[day - 1], varying: varying)
                                 }
                             }.frame(width: columnWidth).frame(minHeight: 46, alignment: .top)
                         }
@@ -259,6 +230,33 @@ private struct WeekTimetable: View {
                 }
             }.padding(.horizontal, 10).padding(.vertical, 8)
         }
+    }
+
+    private func courseButton(_ course: TimetableCourse, period: Int, date: Date, varying: Set<Int>) -> some View {
+        let showsTime = course.isCustomTime == true || varying.contains { (course.startSection...course.endSection).contains($0) }
+        let time = showsTime ? table.time(for: course, on: date) : nil
+        let display = table.displayOptions
+        let title = display.showNumber ? course.name : course.title
+        let fields: [String?] = [title, course.sectionText, time, display.showTeacher ? course.teacher : nil,
+                                 display.showLocation ? course.position : nil]
+        return Button { select(course, date) } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                if course.startSection == period {
+                    Text(title).font(.caption.bold())
+                    if let time { Text(time).font(.caption2.monospacedDigit()) }
+                    if display.showTeacher && !course.teacher.isEmpty {
+                        Text(course.teacher).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if display.showLocation && !course.position.isEmpty {
+                        Text(course.position).font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Image(systemName: "arrow.down").font(.caption)
+                }
+            }.padding(5).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(ScheduleColors.tint(course).opacity(0.17), in: RoundedRectangle(cornerRadius: 6))
+        }.buttonStyle(.plain)
+            .accessibilityLabel(fields.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "，"))
     }
 }
 
