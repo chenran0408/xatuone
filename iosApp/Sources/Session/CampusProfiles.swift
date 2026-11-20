@@ -46,4 +46,3 @@ struct CampusProfiles {
         }, forKey:Self.key)
     }
 }
-
