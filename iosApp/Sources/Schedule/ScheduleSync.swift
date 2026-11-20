@@ -83,6 +83,7 @@ final class ScheduleModel: ObservableObject {
             try commit(draft, dates: SchoolTermDates(semesterStartDate: SchoolCalendar.iso(date), semesterTotalWeeks: weeks))
             historical = nil
             busy = false
+            run = nil
         } catch { problem = "保存课表失败：\(error.localizedDescription)" }
     }
 

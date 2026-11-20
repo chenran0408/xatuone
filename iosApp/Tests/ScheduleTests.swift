@@ -45,6 +45,32 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(draft.usableDates(previous: table), draft.config)
     }
 
+    func testMidweekStartSuppressesPreTermClassesAndKeepsWeekOneNavigable() throws {
+        var timetable = table()
+        timetable.dates.semesterStartDate = "2024-09-04"
+        var wednesdayCourse = entry()
+        wednesdayCourse.day = 3
+        timetable.courses.append(wednesdayCourse)
+        let start = try XCTUnwrap(SchoolCalendar.date("2024-09-04"))
+        let monday = SchoolCalendar.add(-2, to: start)
+        XCTAssertNil(timetable.week(on: start.addingTimeInterval(-1)))
+        XCTAssertTrue(timetable.courses(on: monday).isEmpty)
+        XCTAssertEqual(timetable.courses(on: start), [wednesdayCourse])
+
+        let days = timetable.coursesInWeek(containing: monday)
+        XCTAssertEqual(days.count, 7)
+        XCTAssertTrue(days[0].isEmpty)
+        XCTAssertEqual(days[2], [wednesdayCourse])
+        XCTAssertEqual(timetable.pageWeek(containing: monday), 1)
+        let nextMonday = SchoolCalendar.add(7, to: monday)
+        let firstPage = try XCTUnwrap(timetable.date(inWeek: 1, keepingWeekdayOf: nextMonday))
+        XCTAssertEqual(firstPage, start)
+        let secondPage = try XCTUnwrap(timetable.date(inWeek: 2, keepingWeekdayOf: firstPage))
+        XCTAssertEqual(timetable.week(on: secondPage), 2)
+        XCTAssertEqual(SchoolCalendar.dayNumber(secondPage), 3)
+        XCTAssertNil(timetable.date(inWeek: 0, keepingWeekdayOf: firstPage))
+    }
+
     func testAccountsRemainIsolatedAndAnEncodingFailurePreservesLastImport() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

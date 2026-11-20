@@ -101,10 +101,13 @@ struct AcademicDocument: Decodable {
     return JSON.stringify(result);
     """#
 
-    @MainActor static func read(_ html: String) async throws -> Self {
+    @MainActor private static let engine: WKWebView = {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
-        let engine = WKWebView(frame: .zero, configuration: config)
+        return WKWebView(frame: .zero, configuration: config)
+    }()
+
+    @MainActor static func read(_ html: String) async throws -> Self {
         let result = try await engine.callAsyncJavaScript(script, arguments: ["html": html], in: nil, contentWorld: .defaultClient)
         guard let json = result as? String else { throw AcademicIssue("教务页面解析失败") }
         return try JSONDecoder().decode(Self.self, from: Data(json.utf8))
@@ -255,7 +258,10 @@ enum AcademicParser {
                 groups.append(AcademicSection(id: groups.count, title: heading, rows: []))
             } else if v.count >= 7, Int(v[0]) != nil, !v[2].isEmpty, let last = groups.indices.last {
                 let fields = zip(["课程代码", "要求学分", "实修学分", "成绩", "是否通过"], [v[1],v[3],v[4],v[5],v[6]])
-                groups[last].rows.append(AcademicItem(id: groups[last].rows.count, title: v[2], fields: fields.compactMap { $1.isEmpty ? nil : AcademicField($0, $1) }))
+                let item = AcademicItem(id: groups[last].rows.count, title: v[2], fields: fields.compactMap { label, value in
+                    value.isEmpty ? nil : AcademicField(label, value)
+                })
+                groups[last].rows.append(item)
             }
         }
         guard !groups.isEmpty else { throw AcademicIssue("未识别到学业完成情况") }

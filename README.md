@@ -2,6 +2,8 @@
 
 一校通是面向西安工业大学（XATU）的校园一站式服务应用。项目保留课程表、提醒、导入导出等基础能力，并在 Android 端提供教务、成绩、学分、考试、校历、电费和校园服务入口。
 
+本分支提供 iPhone 预览版，支持 iOS 16 及以上版本。下载 IPA 后使用自己的 Apple 账号签名安装。[iPhone 下载与安装说明](iosApp/README.md)
+
 ## 工程结构
 
 - `shared`：Android 应用内部复用的课程表能力、数据层、导航和 Compose UI。
@@ -9,7 +11,7 @@
 - `androidApp`：Android 入口、WebView 会话、通知和桌面小组件。
 - `docs`：架构约定和工程审计记录。
 
-项目只面向 Android 手机；不包含 iOS、macOS、Windows 或 Linux 应用。
+- `iosApp`：iPhone 版的 SwiftUI 页面、教务与校园服务、测试及 IPA 构建脚本。
 
 XATU 页面复用 Android WebView 的持久化会话。Cookie 在用户退出登录或切换学号时清理，普通页面切换会保留会话。
 

@@ -86,13 +86,30 @@ struct CampusTimetable: Codable, Equatable {
     var slots: [TeachingSlot]
 
     func week(on date: Date) -> Int? {
-        guard let start = SchoolCalendar.date(dates.semesterStartDate) else { return nil }
+        guard let start = SchoolCalendar.date(dates.semesterStartDate), date >= start else { return nil }
         let calendar = SchoolCalendar.calendar
         guard let elapsed = calendar.dateComponents([.day], from: SchoolCalendar.monday(of: start),
                                                    to: calendar.startOfDay(for: date)).day, elapsed >= 0 else { return nil }
         let week = elapsed / 7 + 1
         return week <= dates.semesterTotalWeeks ? week : nil
     }
+
+    func pageWeek(containing date: Date) -> Int? {
+        week(on: SchoolCalendar.add(6, to: SchoolCalendar.monday(of: date)))
+    }
+
+    func date(inWeek week: Int, keepingWeekdayOf date: Date) -> Date? {
+        guard week >= 1, week <= dates.semesterTotalWeeks,
+              let start = SchoolCalendar.date(dates.semesterStartDate) else { return nil }
+        let days = (week - 1) * 7 + SchoolCalendar.dayNumber(date) - 1
+        return max(start, SchoolCalendar.add(days, to: SchoolCalendar.monday(of: start)))
+    }
+
+    func coursesInWeek(containing date: Date) -> [[TimetableCourse]] {
+        let monday = SchoolCalendar.monday(of: date)
+        return (0..<7).map { courses(on: SchoolCalendar.add($0, to: monday)) }
+    }
+
     func courses(on date: Date) -> [TimetableCourse] {
         guard let week = week(on: date) else { return [] }
         return courses.filter { $0.day == SchoolCalendar.dayNumber(date) && $0.weeks.contains(week) }

@@ -43,6 +43,8 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     private var verifying: Task<Void, Error>?
     private var paymentMonitor: Task<Void, Never>?
     private var paymentCompleted: (() -> Void)?
+    // nil while the previous owner's payment credentials are being removed.
+    private var paymentGeneration: UUID? = UUID()
     private var sessionVersion = 0
     private var waiting: (WKNavigation, CheckedContinuation<Void, Error>)?
     private let paymentClient: URLSession = {
@@ -88,15 +90,27 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         if let verifying { return try await verifying.value }
         let version = sessionVersion
         let task = Task { @MainActor in
-            if !Self.isAcademic(webView.url) { try await navigateToLogin() }
-            guard Self.isAcademic(webView.url) else { throw CampusSessionError.academicLoginRequired }
-            let page = try await academicHTML("courseTableForStd.action?sf_request_type=ajax")
+            let alreadyOnCampus = Self.isAcademic(webView.url)
+            if !alreadyOnCampus { try await navigateToLogin() }
+            let id: String
+            do {
+                id = try await verifiedAcademicID()
+            } catch CampusSessionError.academicLoginRequired where alreadyOnCampus && browser?.kind != .academic {
+                // The central login may still be valid after the EAMS session expires.
+                try await navigateToLogin()
+                id = try await verifiedAcademicID()
+            }
             try Task.checkCancellation()
             guard version == sessionVersion else { throw CancellationError() }
-            let id = try Self.accountKey(in: page)
             if accountID != id {
+                paymentGeneration = nil
+                if let page = browser, page.kind != .academic { dismissBrowser() }
+                try await Self.clearPaymentCookies(in: WKWebsiteDataStore.default().httpCookieStore)
+                try Task.checkCancellation()
+                guard version == sessionVersion else { throw CancellationError() }
                 UserDefaults.standard.set(id, forKey: Self.profileKey)
                 accountID = id
+                paymentGeneration = UUID()
             }
         }
         verifying = task
@@ -114,24 +128,32 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         }
     }
 
+    private func verifiedAcademicID() async throws -> String {
+        let html = try await academicHTML("courseTableForStd.action?sf_request_type=ajax", checkingSession: true)
+        return try Self.accountKey(in: html)
+    }
+
     func evaluate(_ script: String) async throws -> Any? {
         guard Self.isAcademic(webView.url) else { throw CampusSessionError.academicLoginRequired }
         return try await webView.evaluateJavaScript(script)
     }
 
-    func academicHTML(_ path: String, form: [String:String]? = nil) async throws -> String {
+    func academicHTML(_ path: String, form: [String:String]? = nil, checkingSession: Bool = false) async throws -> String {
         guard Self.isAcademic(webView.url) else { throw CampusSessionError.academicLoginRequired }
         let url = try Self.academicURL(path)
-        let args: [String:Any] = ["target":url.absoluteString, "fields": form.map { $0 as Any } ?? NSNull()]
+        let args: [String:Any] = ["target":url.path + (url.query.map { "?" + $0 } ?? ""), "probe":checkingSession,
+                                  "fields": form.map { $0 as Any } ?? NSNull()]
         let result = try await webView.callAsyncJavaScript("""
             try {
-                const init = {credentials:'same-origin',cache:'no-store'};
+                const init = {credentials:'same-origin',cache:'no-store',redirect:probe ? 'manual' : 'follow'};
                 if (fields !== null) { init.method='POST'; init.body=new URLSearchParams(fields); }
                 const r = await fetch(target, init);
+                if (r.type === 'opaqueredirect') return {login:true};
                 return {status:r.status,url:r.url,text:await r.text()};
             } catch (e) { return {network:true}; }
             """, arguments: args, in: nil, contentWorld: .page)
         guard let row = result as? [String:Any] else { throw CampusSessionError.invalidPage }
+        if row["login"] as? Bool == true { throw CampusSessionError.academicLoginRequired }
         if row["network"] as? Bool == true { throw URLError(.cannotConnectToHost) }
         guard let end = row["url"] as? String, Self.isAcademic(URL(string:end)),
               let html = row["text"] as? String else { throw CampusSessionError.academicLoginRequired }
@@ -172,7 +194,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     }
 
     private func presentService(_ url: URL, title: String, kind: CampusBrowser.Kind) {
-        guard !signingOut, ["https","http"].contains(url.scheme) else { return }
+        guard !signingOut, paymentGeneration != nil, ["https","http"].contains(url.scheme) else { return }
         dismissBrowser()
         let view = WKWebView(frame:.zero)
         configure(view)
@@ -189,25 +211,49 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         browserError = nil
     }
 
+    static func isPaymentOrigin(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return url.scheme?.lowercased() == "https" && url.host?.lowercased() == payBase.host && (url.port ?? 443) == 443
+    }
+
+    private static let payTokenName = "datalook_reimbursement_token"
+
+    private static func matchesCookieDomain(_ cookie: HTTPCookie, host: String) -> Bool {
+        let domain = cookie.domain.lowercased()
+        return host == domain || (domain.hasPrefix(".") && (host == String(domain.dropFirst()) || host.hasSuffix(domain)))
+    }
+
+    static func clearPaymentCookies(in store: WKHTTPCookieStore) async throws {
+        let host = payBase.host!
+        for cookie in await store.allCookies() {
+            try Task.checkCancellation()
+            let domain = cookie.domain.lowercased()
+            let paymentHostCookie = domain == host || domain == "." + host
+            let sharedPaymentToken = cookie.name == payTokenName && matchesCookieDomain(cookie, host: host)
+            if paymentHostCookie || sharedPaymentToken { await store.deleteCookie(cookie) }
+        }
+    }
+
     private func paymentToken(for url: URL) async -> String? {
+        guard Self.isPaymentOrigin(url), let host = url.host?.lowercased() else { return nil }
         let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
         return cookies.filter {
-            let domain = $0.domain.lowercased()
-            let host = url.host ?? ""
-            let matchesHost = host == domain || (domain.hasPrefix(".") && (host == String(domain.dropFirst()) || host.hasSuffix(domain)))
             let matchesPath = url.path == $0.path || url.path.hasPrefix($0.path.hasSuffix("/") ? $0.path : $0.path + "/")
-            return $0.name == "datalook_reimbursement_token" && matchesHost && matchesPath &&
+            return $0.name == Self.payTokenName && Self.matchesCookieDomain($0, host: host) && matchesPath &&
                 !$0.value.isEmpty && ($0.expiresDate.map { $0 > Date() } ?? true)
         }.sorted { $0.path.count > $1.path.count }.first?.value
     }
 
     func paymentJSON(_ path: String, form: [String:String]? = nil) async throws -> Any {
-        let version = sessionVersion
-        guard !signingOut, let url = URL(string:path,relativeTo:Self.payBase)?.absoluteURL,
-              url.scheme == "https", url.host == Self.payBase.host, url.port == nil, url.path.hasPrefix("/api/") else {
+        guard let generation = paymentGeneration, !signingOut else { throw CancellationError() }
+        guard let url = URL(string:path,relativeTo:Self.payBase)?.absoluteURL,
+              Self.isPaymentOrigin(url), url.path.hasPrefix("/api/") else {
             throw CampusSessionError.invalidPage
         }
-        guard let token = await paymentToken(for:url) else { throw CampusSessionError.paymentLoginRequired }
+        let credential = await paymentToken(for:url)
+        try Task.checkCancellation()
+        guard paymentGeneration == generation else { throw CancellationError() }
+        guard let token = credential else { throw CampusSessionError.paymentLoginRequired }
         var request = URLRequest(url:url)
         request.setValue(token,forHTTPHeaderField:"X-Token")
         request.setValue("application/json",forHTTPHeaderField:"Accept")
@@ -217,7 +263,8 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
             request.httpBody = try JSONSerialization.data(withJSONObject:form)
         }
         let (data,response) = try await paymentClient.data(for:request)
-        guard version == sessionVersion else { throw CancellationError() }
+        try Task.checkCancellation()
+        guard paymentGeneration == generation else { throw CancellationError() }
         guard let http = response as? HTTPURLResponse else { throw CampusSessionError.invalidPage }
         if http.statusCode == 401 || (300..<400).contains(http.statusCode) { throw CampusSessionError.paymentLoginRequired }
         guard (200..<300).contains(http.statusCode) else { throw CampusSessionError.http(http.statusCode) }
@@ -229,19 +276,21 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         paymentMonitor = Task {
             var lastToken: String?
             while !Task.isCancelled && browser?.id == page.id {
-                guard page.view.url?.host == Self.payBase.host else { return }
+                guard Self.isPaymentOrigin(page.view.url) else { return }
                 if let token = await paymentToken(for:Self.payBase.appendingPathComponent("pay/queryUserInfo")), token != lastToken {
                     lastToken = token
                     do {
-                        let json = try await paymentJSON("pay/queryUserInfo") as? [String:Any]
-                        if let user = json?["data"] as? [String:Any], let id = user["id"],
-                           !(id is NSNull), !String(describing:id).isEmpty,
-                           !Task.isCancelled, browser?.id == page.id {
-                            let done = paymentCompleted
-                            dismissBrowser()
-                            done?()
-                            return
-                        }
+                        let json = try await paymentJSON(CampusPowerAPI.user)
+                        try CampusPowerAPI.confirmUser(json)
+                        guard !Task.isCancelled, browser?.id == page.id, Self.isPaymentOrigin(page.view.url) else { return }
+                        let done = paymentCompleted
+                        dismissBrowser()
+                        done?()
+                        return
+                    } catch PowerError.login {
+                        // The login page may still be replacing an expired token.
+                    } catch CampusSessionError.paymentLoginRequired {
+                        // Continue observing until CAS issues a different credential.
                     } catch {
                         if !Task.isCancelled && browser?.id == page.id { browserError = error.localizedDescription }
                     }
@@ -254,6 +303,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     func logout() async {
         guard !signingOut else { return }
         signingOut = true
+        paymentGeneration = nil
         sessionVersion += 1
         verifying?.cancel(); verifying = nil
         waiting?.1.resume(throwing:CancellationError()); waiting = nil
@@ -266,7 +316,12 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         accountID = ""
         let store = WKWebsiteDataStore.default()
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        paymentGeneration = UUID()
         signingOut = false
+    }
+
+    func webView(_ view: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if let page = browser, page.kind == .payment, page.view === view { paymentMonitor?.cancel() }
     }
 
     func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) {

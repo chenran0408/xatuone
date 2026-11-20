@@ -61,7 +61,7 @@ private struct AcademicServiceScreen: View {
             } else if let error {
                 Text(error).foregroundStyle(.secondary)
                 if needsLogin { Button("登录教务系统") { session.openAcademic() } }
-                Button("重新查询") { revision += 1 }
+                else { Button("重新查询") { revision += 1 } }
             } else if let report {
                 if !report.highlights.isEmpty {
                     Section("汇总") { fields(report.highlights) }
@@ -111,6 +111,7 @@ private struct AcademicServiceScreen: View {
         let term = selected
         loading = true; error = nil; needsLogin = false; report = nil
         do {
+            guard !session.accountID.isEmpty else { throw CampusSessionError.academicLoginRequired }
             try await session.ensureAcademic()
             if service.usesTerm && term.isEmpty {
                 let html = try await session.academicHTML("dataQuery.action?tagId=&dataType=semesterCalendar", form: nil)
@@ -164,8 +165,9 @@ private struct AcademicServiceScreen: View {
             report = value
         } catch {
             guard !Task.isCancelled else { return }
-            if case CampusSessionError.academicLoginRequired = error {
-                needsLogin = true; self.error = "教务登录已失效"
+            if let sessionError = error as? CampusSessionError, case .academicLoginRequired = sessionError {
+                needsLogin = true
+                self.error = session.accountID.isEmpty ? "尚未登录教务系统" : "教务登录已失效"
             } else { self.error = error.localizedDescription }
         }
         loading = false

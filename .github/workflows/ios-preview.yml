@@ -27,13 +27,19 @@ jobs:
       - name: Build iPhone device IPA
         run: bash iosApp/build-ipa.sh "$RUNNER_TEMP/xatu-ios"
       - name: Run tests on iPhone Simulator
+        id: tests
         working-directory: iosApp
         run: |
           device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; ds=json.load(sys.stdin)["devices"]; print(next(d["udid"] for rt,items in sorted(ds.items(),reverse=True) if ".iOS-" in rt for d in items if d["name"].startswith("iPhone")))' )"
           xcodebuild test -quiet -project XatuOne.xcodeproj -scheme XatuOne -configuration Debug \
             -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
             -derivedDataPath "$RUNNER_TEMP/ios-tests" -resultBundlePath "$RUNNER_TEMP/XatuOneTests.xcresult"
-          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/XatuOneTests.xcresult"
+      - name: Test results
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          if test -d "$RUNNER_TEMP/XatuOneTests.xcresult"; then
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/XatuOneTests.xcresult"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: XATU-One-iPhone-unsigned

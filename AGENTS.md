@@ -5,7 +5,7 @@
 - `shared/src/commonMain`：课程表、通用导航、共享数据和 UI。
 - `shared/src/androidMain`：Android 专属的 XATU 服务、WebView、定位和 OCR。
 - `androidApp`：Android 应用壳、权限、通知、小组件和发布构建。
-- 本项目只构建和发布 Android 手机应用。
+- 主线构建和发布 Android 手机应用。独立分支 `ios/campus-preview` 的 SwiftUI 客户端与 XCTest 放在 `iosApp/`，使用同一份 XATU 课程适配脚本。iPhone 构建和自签步骤见 [iPhone 说明](iosApp/README.md)。
 
 新增校园服务时，将网络解析放在 `shared/src/androidMain/.../xatu/<domain>`，持久化放在 repository，页面只负责状态展示和事件分发。
 

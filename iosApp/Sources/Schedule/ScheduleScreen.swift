@@ -115,24 +115,26 @@ struct ScheduleScreen: View {
                 Text("日课表").tag(false); Text("周课表").tag(true)
             }.pickerStyle(.segmented)
             if weekly {
+                let week = table.pageWeek(containing: date)
                 HStack {
-                    Button { date = SchoolCalendar.add(-7, to: date) } label: { Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44) }
-                        .accessibilityLabel("上一周").disabled((table.week(on: date) ?? 0) <= 1)
+                    Button {
+                        if let week, let previous = table.date(inWeek: week - 1, keepingWeekdayOf: date) { date = previous }
+                    } label: { Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("上一周").disabled((week ?? 0) <= 1)
                     Spacer()
                     Menu {
                         ForEach(1...max(1, table.dates.semesterTotalWeeks), id: \.self) { w in
                             Button("第 \(w) 周") {
-                                if let start = SchoolCalendar.date(table.dates.semesterStartDate) {
-                                    date = SchoolCalendar.add((w - 1) * 7 + SchoolCalendar.dayNumber(date) - 1,
-                                                             to: SchoolCalendar.monday(of: start))
-                                }
+                                if let selected = table.date(inWeek: w, keepingWeekdayOf: date) { date = selected }
                             }
                         }
-                    } label: { Text(table.week(on: date).map { "第 \($0) 周" } ?? "选择教学周").font(.headline) }
+                    } label: { Text(week.map { "第 \($0) 周" } ?? "选择教学周").font(.headline) }
                     Spacer()
-                    Button { date = SchoolCalendar.add(7, to: date) } label: { Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44) }
+                    Button {
+                        if let week, let next = table.date(inWeek: week + 1, keepingWeekdayOf: date) { date = next }
+                    } label: { Image(systemName: "chevron.right").frame(minWidth: 44, minHeight: 44) }
                         .accessibilityLabel("下一周")
-                        .disabled(table.week(on: date).map { $0 >= table.dates.semesterTotalWeeks } ?? true)
+                        .disabled(week.map { $0 >= table.dates.semesterTotalWeeks } ?? true)
                 }
             } else {
                 DatePicker(table.week(on: date).map { "第 \($0) 周" } ?? "日期",
@@ -150,7 +152,7 @@ private struct WeekTimetable: View {
 
     var body: some View {
         let monday = SchoolCalendar.monday(of: date)
-        let weekCourses = table.week(on: date).map { week in table.courses.filter { $0.weeks.contains(week) } } ?? []
+        let dayCourses = table.coursesInWeek(containing: date)
         ScrollView([.horizontal, .vertical]) {
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
@@ -170,7 +172,7 @@ private struct WeekTimetable: View {
                             .font(.caption.monospacedDigit()).frame(minWidth: 45, minHeight: 46)
                             .accessibilityLabel("第 \(slot.number) 节，\(slot.startTime) 至 \(slot.endTime)")
                         ForEach(1...7, id: \.self) { day in
-                            let items = weekCourses.filter { $0.day == day && ($0.startSection...$0.endSection).contains(slot.number) }
+                            let items = dayCourses[day - 1].filter { ($0.startSection...$0.endSection).contains(slot.number) }
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(items.indices, id: \.self) { i in
                                     let course = items[i]
