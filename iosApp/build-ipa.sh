@@ -17,6 +17,7 @@ app="$stage/Payload/XatuOne.app"
 test "$(xcrun lipo -archs "$app/XatuOne")" = arm64
 xcrun vtool -show-build "$app/XatuOne" | grep -Eq 'platform (IOS|2)$'
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.xatuone.campus
+python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1], "rb"))["UIDeviceFamily"] == [1], "expected an iPhone device build"' "$app/Info.plist"
 test ! -e "$app/embedded.mobileprovision"
 test -s "$app/myschool.js"
 if codesign -d "$app" 2>/dev/null; then codesign --remove-signature "$app"; fi
