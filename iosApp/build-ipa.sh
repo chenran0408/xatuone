@@ -7,8 +7,9 @@ output="$(cd "$output" && pwd)"
 xcodegen generate
 xcodebuild -quiet -project XatuOne.xcodeproj -scheme XatuOne -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath "$output/device" \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
-app="$output/device/Build/Products/Release-iphoneos/XatuOne.app"
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEBUG_INFORMATION_FORMAT=dwarf-with-dsym build
+products="$output/device/Build/Products/Release-iphoneos"
+app="$products/XatuOne.app"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir "$stage/Payload"
@@ -26,6 +27,14 @@ check_bundle() {
   test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$bundle/Info.plist")" = 16.0
   python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); assert p["UIDeviceFamily"] == [1] and p["CFBundleSupportedPlatforms"] == ["iPhoneOS"]' "$bundle/Info.plist"
   if codesign -d "$bundle" 2>/dev/null; then codesign --remove-signature "$bundle"; fi
+  # Strip only the packaged copy. Keep the matching dSYM for symbolication.
+  local symbols="$products/$(basename "$bundle").dSYM"
+  local uuid
+  test -s "$symbols/Contents/Resources/DWARF/$product"
+  uuid="$(xcrun dwarfdump --uuid "$symbols" | awk '{print $2}')"
+  test -n "$uuid"
+  xcrun strip -S -x "$binary"
+  test "$(xcrun dwarfdump --uuid "$binary" | awk '{print $2}')" = "$uuid"
   commands="$(xcrun otool -l "$binary")"
   if grep -Eq '^[[:space:]]*cmd LC_CODE_SIGNATURE$' <<<"$commands" || codesign -d "$bundle" 2>/dev/null; then
     echo "Code signature remains in $product" >&2
@@ -40,6 +49,6 @@ cmp "$app/myschool.js" ../shared/assets/offline_repo/schools/resources/XATU/mysc
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
 ipa="$output/XATU-One-iPhone-$version-unsigned.ipa"
 rm -f "$ipa"
-(cd "$stage" && /usr/bin/zip -qr "$ipa" Payload)
+(cd "$stage" && /usr/bin/zip -q -9 -r "$ipa" Payload)
 unzip -tq "$ipa"
 (cd "$output" && shasum -a 256 "$(basename "$ipa")" > SHA256SUMS)

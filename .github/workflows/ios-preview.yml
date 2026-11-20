@@ -26,6 +26,12 @@ jobs:
           xcodebuild -version
       - name: Build iPhone device IPA
         run: bash iosApp/build-ipa.sh "$RUNNER_TEMP/xatu-ios"
+      - name: Save device debug symbols separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: XATU-One-iPhone-dSYMs
+          path: ${{ runner.temp }}/xatu-ios/device/Build/Products/Release-iphoneos/*.dSYM
+          if-no-files-found: error
       - name: Run tests on iPhone Simulator
         id: tests
         working-directory: iosApp
