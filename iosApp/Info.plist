@@ -14,6 +14,8 @@
 <key>UILaunchScreen</key><dict/>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>NSLocationWhenInUseUsageDescription</key><string>打开校园签到时，可使用你当前的位置。</string>
+<key>NSCalendarsUsageDescription</key><string>将课程写入专用日历，并在重新同步时更新这些课程。</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>同步课表时读取并更新由一校通创建的课程日历。</string>
 <key>NSAppTransportSecurity</key><dict><key>NSExceptionDomains</key><dict>
   <key>jwgl2018.xatu.edu.cn</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
 </dict></dict>

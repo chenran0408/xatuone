@@ -29,18 +29,34 @@ private struct CampusWebPage: Identifiable {
 
 struct CampusScreen: View {
     @EnvironmentObject private var session: CampusSession
+    @State private var search = ""
+    private func matches(_ title: String) -> Bool {
+        search.isEmpty || title.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
     var body: some View {
         List {
-            Section("校园生活") {
-                NavigationLink(destination: ElectricityScreen()) { Label("宿舍电费", systemImage: "bolt") }
-                ForEach(CampusWebPage.daily) { webRow($0) }
+            let daily = CampusWebPage.daily.filter { matches($0.title) }
+            let services = CampusWebPage.services.filter { matches($0.title) }
+            if matches("宿舍电费") || !daily.isEmpty {
+                Section("校园生活") {
+                    if matches("宿舍电费") { NavigationLink(destination: ElectricityScreen()) { Label("宿舍电费", systemImage: "bolt") } }
+                    ForEach(daily) { webRow($0) }
+                }
             }
-            Section("校园办事") {
-                NavigationLink(destination: CampusCheckIn()) { Label("校园签到", systemImage: "location.circle") }
-                ForEach(CampusWebPage.services) { webRow($0) }
+            if matches("校园签到") || !services.isEmpty {
+                Section("校园办事") {
+                    if matches("校园签到") {
+                        NavigationLink(destination: CampusCheckIn().id(session.accountID)) { Label("校园签到", systemImage: "location.circle") }
+                    }
+                    ForEach(services) { webRow($0) }
+                }
+            }
+            if !matches("宿舍电费"), !matches("校园签到"), daily.isEmpty, services.isEmpty {
+                Text("没有匹配的校园服务").foregroundStyle(.secondary)
             }
         }
         .navigationTitle("校园服务")
+        .searchable(text: $search, prompt: "搜索校园服务")
     }
 
     private func webRow(_ page: CampusWebPage) -> some View {
@@ -111,6 +127,8 @@ private struct CampusCheckIn: View {
     @EnvironmentObject private var session: CampusSession
     @StateObject private var location = CampusLocation()
     @Environment(\.openURL) private var openURL
+    @State private var saved: CheckInPlace?
+    @State private var saveError: String?
 
     var body: some View {
         List {
@@ -132,11 +150,37 @@ private struct CampusCheckIn: View {
                     LabeledContent("纬度", value: position.coordinate.latitude.formatted(.number.precision(.fractionLength(5))))
                     LabeledContent("经度", value: position.coordinate.longitude.formatted(.number.precision(.fractionLength(5))))
                     LabeledContent("定位时间", value: position.timestamp.formatted(date: .abbreviated, time: .standard))
+                    if !session.accountID.isEmpty {
+                        Button("保存设备位置") {
+                            do {
+                                let place = CheckInPlace(position: position)
+                                try place.save(account: session.accountID)
+                                saved = place
+                                saveError = nil
+                            } catch { saveError = error.localizedDescription }
+                        }
+                    }
                 }
                 if let error = location.error { Text(error).foregroundStyle(.red) }
             }
+            if let saved {
+                Section("已保存的位置") {
+                    LabeledContent("纬度", value: saved.latitude.formatted(.number.precision(.fractionLength(5))))
+                    LabeledContent("经度", value: saved.longitude.formatted(.number.precision(.fractionLength(5))))
+                    LabeledContent("定位时间", value: saved.time.formatted(date: .abbreviated, time: .standard))
+                    Button("移除已保存位置", role: .destructive) {
+                        CheckInPlace.clear(account: session.accountID)
+                        self.saved = nil
+                    }
+                }
+            }
+            if let saveError { Text(saveError).foregroundStyle(.red) }
         }
         .navigationTitle("校园签到")
+        .task(id: session.accountID) {
+            do { saved = try CheckInPlace.load(account: session.accountID); saveError = nil }
+            catch { saveError = error.localizedDescription }
+        }
     }
 
     private var permissionLabel: String {
@@ -148,5 +192,28 @@ private struct CampusCheckIn: View {
         case .authorizedWhenInUse: return "使用期间允许"
         @unknown default: return "未知"
         }
+    }
+}
+
+struct CheckInPlace: Codable {
+    let latitude: Double
+    let longitude: Double
+    let time: Date
+    init(position: CLLocation) {
+        latitude = position.coordinate.latitude
+        longitude = position.coordinate.longitude
+        time = position.timestamp
+    }
+    static func load(account: String, defaults: UserDefaults = .standard) throws -> Self? {
+        guard !account.isEmpty, let bytes = defaults.data(forKey: "xatu.checkin.place.v1." + account) else { return nil }
+        return try JSONDecoder().decode(Self.self, from: bytes)
+    }
+    func save(account: String, defaults: UserDefaults = .standard) throws {
+        guard !account.isEmpty else { throw CampusSessionError.academicLoginRequired }
+        defaults.set(try JSONEncoder().encode(self), forKey: "xatu.checkin.place.v1." + account)
+    }
+    static func clear(account: String, defaults: UserDefaults = .standard) {
+        guard !account.isEmpty else { return }
+        defaults.removeObject(forKey: "xatu.checkin.place.v1." + account)
     }
 }

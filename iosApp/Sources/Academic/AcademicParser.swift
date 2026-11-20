@@ -1,26 +1,26 @@
 import Foundation
 import WebKit
 
-struct AcademicItem: Identifiable {
+struct AcademicItem: Identifiable, Codable {
     var id: Int
     let title: String
     let fields: [AcademicField]
     var summary: String { fields.prefix(2).map { "\($0.label) \($0.value)" }.joined(separator: " · ") }
 }
 
-struct AcademicField {
+struct AcademicField: Codable {
     let label: String
     let value: String
     init(_ label: String, _ value: String) { self.label = label; self.value = value }
 }
 
-struct AcademicSection: Identifiable {
+struct AcademicSection: Identifiable, Codable {
     let id: Int
     let title: String
     var rows: [AcademicItem]
 }
 
-struct AcademicReport {
+struct AcademicReport: Codable {
     var highlights: [AcademicField] = []
     var sections: [AcademicSection] = []
 }
@@ -31,10 +31,11 @@ struct AcademicIssue: LocalizedError {
     var errorDescription: String? { text }
 }
 
-struct AcademicSemester: Identifiable, Equatable {
+struct AcademicSemester: Identifiable, Equatable, Codable {
     let id: String
     let year: String
     let term: String
+    var startDate: String? = nil
     var title: String {
         let label = term == "1" ? "秋季学期" : term == "2" ? "春季学期" : term
         return year.isEmpty ? label : "\(year)学年 \(label)"
@@ -167,7 +168,8 @@ enum AcademicParser {
             let id = field(["id"]), year = field(["schoolYear", "school_year", "academicYear", "year"])
             let name = field(["name", "termName", "term", "title"])
             guard Int(id) != nil, !name.isEmpty || !year.isEmpty, seen.insert(id).inserted else { return nil }
-            return AcademicSemester(id: id, year: year, term: name)
+            let start = field(["startDate", "start_date", "beginDate", "start"])
+            return AcademicSemester(id: id, year: year, term: name, startDate: start.isEmpty ? nil : start)
         }
         if result.isEmpty {
             result = options.compactMap { o in
@@ -201,11 +203,13 @@ enum AcademicParser {
         }
         let score = table.column("总评", "最终") ?? table.headers.firstIndex { ["成绩", "总成绩"].contains($0) }
         let credits = table.headers.firstIndex { $0.contains("学分") && !$0.contains("绩点") }
+        let points = table.headers.firstIndex { ["绩点", "学分绩点", "课程绩点"].contains($0) }
+        let counted = table.headers.firstIndex { ["是否计绩", "是否计入绩点", "是否计算绩点"].contains($0) }
         let rows = table.rows.enumerated().compactMap { index, row -> AcademicItem? in
             let title = table.value(row, table.column("课程名称", "科目"))
             guard !title.isEmpty, !title.contains("无数据") else { return nil }
             var fields = [AcademicField("成绩", table.value(row, score)), AcademicField("学分", table.value(row, credits)),
-                          AcademicField("绩点", table.value(row, table.column("绩点"))),
+                          AcademicField("绩点", table.value(row, points)), AcademicField("是否计绩", table.value(row, counted)),
                           AcademicField("课程序号", table.value(row, table.column("课程序号", "课程代码", "课程号"))),
                           AcademicField("学期", table.value(row, table.column("学年学期", "学期", "学年")))]
             for (i, h) in table.headers.enumerated() where i != score && (h.contains("成绩") || h == "其他") {
@@ -249,10 +253,18 @@ enum AcademicParser {
         if let totals = captures(#"要求学分/实修学分\s*[:：]\s*([\d.]+)\s*/\s*([\d.]+)"#, in: text).first {
             highlights += [AcademicField("要求学分", totals[1]), AcademicField("实修学分", totals[2])]
         }
+        var rootCreditPairs: [[Decimal]] = []
+        var hasRoot = false, hasChild = false
         for row in doc.tables.flatMap({ $0 }) {
             let v = row.values
             if row.group, let title = v.first, !title.isEmpty {
                 let numbers = v.dropFirst().filter { Double($0) != nil }
+                if hasRoot, title.range(of: #"^[（(][一二三四五六七八九十]+[）)]"#, options: .regularExpression) != nil {
+                    hasChild = true
+                } else if !(hasChild && title.range(of: #"^\d+[\s　]"#, options: .regularExpression) != nil) {
+                    hasRoot = true; hasChild = false
+                    rootCreditPairs.append(numbers.prefix(2).compactMap { Decimal(string: $0, locale: Locale(identifier: "en_US_POSIX")) })
+                }
                 var heading = title
                 if numbers.count >= 2 { heading += " · \(numbers[1]) / \(numbers[0]) 学分" }
                 groups.append(AcademicSection(id: groups.count, title: heading, rows: []))
@@ -265,7 +277,21 @@ enum AcademicParser {
             }
         }
         guard !groups.isEmpty else { throw AcademicIssue("未识别到学业完成情况") }
+        if !highlights.contains(where: { $0.label == "要求学分" }), !rootCreditPairs.isEmpty,
+           rootCreditPairs.allSatisfy({ $0.count == 2 }) {
+            let required = rootCreditPairs.reduce(Decimal.zero) { $0 + $1[0] }
+            let earned = rootCreditPairs.reduce(Decimal.zero) { $0 + $1[1] }
+            highlights += [AcademicField("要求学分", NSDecimalNumber(decimal: required).stringValue),
+                           AcademicField("实修学分", NSDecimalNumber(decimal: earned).stringValue)]
+        }
         return AcademicReport(highlights: highlights, sections: groups)
+    }
+
+    static func catalogMatch(for course: AcademicItem, in report: AcademicReport) -> AcademicItem? {
+        let rows = report.sections.flatMap(\.rows)
+        if let code = course.value("课程代码"),
+           let exact = rows.first(where: { $0.value("课程代码") == code }) { return exact }
+        return rows.first { $0.title == course.title && (course.value("课程代码") == nil || $0.value("课程代码") == nil) }
     }
 
     static func catalog(_ doc: AcademicDocument) throws -> AcademicReport {

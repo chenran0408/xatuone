@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import Vision
 
-struct AcademicCalendarPage {
+struct AcademicCalendarPage: Codable {
     static let index = URL(string: "https://jwcw.xatu.edu.cn/index/xagydxxl.htm")!
     let title: String
     let article: URL
@@ -86,15 +86,37 @@ struct AcademicCalendarPage {
     }
 }
 
+struct AcademicCalendarCopy: Codable {
+    let page: AcademicCalendarPage
+    let original: Data
+    let updatedAt: Date
+    var recognized: String?
+
+    private static func file(_ directory: URL?) throws -> URL {
+        let root = try directory ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        return root.appendingPathComponent("xatu-public-calendar.plist")
+    }
+
+    static func load(directory: URL? = nil) throws -> Self? {
+        let url = try file(directory)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try PropertyListDecoder().decode(Self.self, from: Data(contentsOf: url))
+    }
+
+    func save(directory: URL? = nil) throws {
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        try encoder.encode(self).write(to: Self.file(directory), options: .atomic)
+    }
+}
+
 struct AcademicCalendarScreen: View {
     @EnvironmentObject private var session: CampusSession
-    @State private var page: AcademicCalendarPage?
-    @State private var bytes: Data?
+    @State private var copy: AcademicCalendarCopy?
     @State private var image: UIImage?
     @State private var error: String?
     @State private var loading = true
     @State private var scanning = false
-    @State private var recognized: String?
     @State private var scanError: String?
     @State private var scanID = 0
     @State private var showImage = false
@@ -102,10 +124,12 @@ struct AcademicCalendarScreen: View {
 
     var body: some View {
         List {
-            if let page {
+            if let copy {
+                let page = copy.page
                 Section(page.title) {
-                    let ranges = page.dateRanges.isEmpty ? AcademicCalendarPage.ranges(recognized ?? "") : page.dateRanges
+                    let ranges = page.dateRanges.isEmpty ? AcademicCalendarPage.ranges(copy.recognized ?? "") : page.dateRanges
                     ForEach(ranges, id: \.self) { Text($0) }
+                    LabeledContent("上次更新", value: copy.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     if let image {
                         Button { showImage = true } label: {
                             Image(uiImage: image).resizable().scaledToFit().accessibilityLabel("查看校历原图")
@@ -118,39 +142,53 @@ struct AcademicCalendarScreen: View {
             if let error {
                 Text(error).foregroundStyle(.secondary)
                 Button("重试") { revision += 1 }
-                if page == nil { Button("打开教务处校历") { session.open(AcademicCalendarPage.index, title: "校历") } }
+                if copy == nil { Button("打开教务处校历") { session.open(AcademicCalendarPage.index, title: "校历") } }
             }
-            if bytes != nil {
+            if let copy {
                 Section("识别文字") {
                     if scanning { ProgressView("正在识别") }
-                    if let recognized { Text(recognized.isEmpty ? "没有识别到文字" : recognized).textSelection(.enabled) }
+                    if let recognized = copy.recognized { Text(recognized.isEmpty ? "没有识别到文字" : recognized).textSelection(.enabled) }
                     if let scanError { Text(scanError).foregroundStyle(.secondary) }
-                    if !scanning && recognized == nil { Button("识别校历文字") { scanID += 1 } }
+                    if !scanning && copy.recognized == nil { Button("识别校历文字") { scanID += 1 }.disabled(loading) }
                 }
             }
         }
         .navigationTitle("校历")
-        .toolbar { Button { revision += 1 } label: { Label("刷新校历", systemImage: "arrow.clockwise") }.disabled(loading) }
+        .toolbar { Button { revision += 1 } label: { Label("刷新校历", systemImage: "arrow.clockwise") }.disabled(loading || scanning) }
         .task(id: revision) {
-            loading = true; page = nil; bytes = nil; image = nil; recognized = nil; error = nil; scanError = nil; scanID = 0
+            loading = true; error = nil; scanError = nil
+            // A damaged local copy must not prevent a fresh download.
+            if copy == nil {
+                do {
+                    if let cached = try AcademicCalendarCopy.load(), let decoded = UIImage(data: cached.original) {
+                        copy = cached; image = decoded
+                    }
+                } catch { self.error = error.localizedDescription }
+            }
             do {
                 let result = try await AcademicCalendarPage.load()
                 try Task.checkCancellation()
-                page = result
                 let data = try await AcademicCalendarPage.fetch(result.image, referer: result.article)
                 guard let decoded = UIImage(data: data) else { throw AcademicIssue("无法打开校历原图") }
                 try Task.checkCancellation()
-                image = decoded; bytes = data
+                let cachedText = copy?.original == data ? copy?.recognized : nil
+                let updated = AcademicCalendarCopy(page: result, original: data, updatedAt: Date(), recognized: cachedText)
+                try updated.save()
+                copy = updated; image = decoded; self.error = nil
             } catch { if Task.isCancelled { return }; self.error = error.localizedDescription }
             loading = false
         }
         .task(id: scanID) {
-            guard scanID > 0, let bytes else { scanning = false; return }
+            guard scanID > 0, let source = copy else { scanning = false; return }
             scanning = true; scanError = nil
             do {
-                let result = try await AcademicCalendarPage.recognize(bytes)
+                let result = try await AcademicCalendarPage.recognize(source.original)
                 try Task.checkCancellation()
-                recognized = result
+                if var current = copy, current.original == source.original {
+                    current.recognized = result
+                    try current.save()
+                    copy = current
+                }
             } catch { if Task.isCancelled { return }; scanError = error.localizedDescription }
             scanning = false
         }

@@ -36,6 +36,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     private static let payBase = URL(string: "https://jfpay.xatu.edu.cn/api/")!
     private static let profileKey = "xatu.eams.active-profile"
     @Published private(set) var accountID = UserDefaults.standard.string(forKey: CampusSession.profileKey) ?? ""
+    var timetableOwner: String { accountID.isEmpty ? "0" : accountID }
     @Published var browser: CampusBrowser?
     @Published var browserError: String?
     @Published private(set) var signingOut = false
@@ -300,7 +301,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         }
     }
 
-    func logout() async {
+    func logout() async throws {
         guard !signingOut else { return }
         signingOut = true
         paymentGeneration = nil
@@ -312,12 +313,16 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
         webView.navigationDelegate = nil
         webView = WKWebView(frame:.zero)
         configure(webView)
+        let oldOwner = accountID
         UserDefaults.standard.removeObject(forKey:Self.profileKey)
         accountID = ""
         let store = WKWebsiteDataStore.default()
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         paymentGeneration = UUID()
         signingOut = false
+        CampusPowerHistory.clear(account:oldOwner)
+        CheckInPlace.clear(account:oldOwner)
+        try AcademicCache.clear(account:oldOwner)
     }
 
     func webView(_ view: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

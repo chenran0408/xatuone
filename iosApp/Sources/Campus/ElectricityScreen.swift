@@ -37,6 +37,7 @@ private struct ElectricityDetail: View {
     @State private var pickAfterLogin = false
     @State private var liveReading: Date?
     @State private var days = 7
+    @State private var byDay = false
 
     var body: some View {
         List {
@@ -50,6 +51,9 @@ private struct ElectricityDetail: View {
                         }
                         Text("\(liveReading == reading.time ? "更新于" : "上次更新") \(reading.time.formatted(date: .abbreviated, time: .standard))")
                             .font(.footnote).foregroundStyle(.secondary)
+                        if let change = cache.recentChange {
+                            LabeledContent("较上次查询", value: (change > 0 ? "+" : "") + change.formatted() + " 度")
+                        }
                     }
                 }
                 switch status {
@@ -97,9 +101,25 @@ private struct ElectricityDetail: View {
                     }
                 }
                 Section("查询记录") {
-                    ForEach(cache.readings.reversed()) { reading in
-                        LabeledContent(reading.time.formatted(date: .abbreviated, time: .shortened),
-                                       value: "\(reading.formatted) 度")
+                    Picker("记录方式", selection: $byDay) {
+                        Text("按次查询").tag(false)
+                        Text("按日汇总").tag(true)
+                    }.pickerStyle(.segmented)
+                    if byDay {
+                        ForEach(cache.daily.reversed()) { day in
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent(day.last.time.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: AcademicParser.schoolCalendar.timeZone)),
+                                               value: "\(day.last.formatted) 度")
+                                if let drop = day.decrease {
+                                    Text("较前日末次余额减少 \(drop.formatted()) 度").font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    } else {
+                        ForEach(cache.readings.reversed()) { reading in
+                            LabeledContent(reading.time.formatted(date: .abbreviated, time: .shortened),
+                                           value: "\(reading.formatted) 度")
+                        }
                     }
                 }
             }

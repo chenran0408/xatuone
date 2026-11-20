@@ -39,6 +39,7 @@ final class ScheduleModel: ObservableObject {
     private let store: TimetableStore
     private(set) var account = ""
     private var run: UUID?
+    private var target: String?
     private var answer: ((Int?) -> Void)?
 
     init(store: TimetableStore = TimetableStore()) { self.store = store }
@@ -57,10 +58,38 @@ final class ScheduleModel: ObservableObject {
 
     func select(_ semester: String) {
         guard archive.semesters[semester] != nil, archive.selected != semester else { return }
-        var next = archive
-        next.selected = semester
-        do { try store.save(next, account: account); archive = next }
+        do { try change(owner: account) { next in
+            guard next.semesters[semester] != nil else { throw ScheduleIssue.message("课表已删除") }
+            next.selected = semester
+        } }
         catch { problem = "保存学期失败：\(error.localizedDescription)" }
+    }
+
+    func reload(owner: String) {
+        guard owner == account else { return }
+        do { archive = try store.load(account: account) }
+        catch { problem = "读取课表失败：\(error.localizedDescription)" }
+    }
+
+    func change(owner: String, _ edit: (inout AccountTimetables) throws -> Void) throws {
+        guard owner == account else { throw ScheduleIssue.message("账号已切换，请重新打开课表") }
+        var next = try store.load(account: owner)
+        try edit(&next)
+        try store.save(next, account: owner)
+        archive = next
+    }
+
+    func changeTable(owner: String, key: String, _ edit: (inout CampusTimetable) throws -> Void) throws {
+        try change(owner: owner) { next in
+            guard var table = next.semesters[key] else { throw ScheduleIssue.message("课表已删除") }
+            try edit(&table)
+            next.semesters[key] = table
+        }
+    }
+
+    func previous(for draft: TimetableDraft) -> CampusTimetable? {
+        let existing = archive.semesters[target ?? draft.semester]
+        return existing?.semester == draft.semester ? existing : nil
     }
 
     func reply(_ index: Int?) {
@@ -89,18 +118,14 @@ final class ScheduleModel: ObservableObject {
 
     private func commit(_ draft: TimetableDraft, dates: SchoolTermDates) throws {
         // Re-read before replacement. In particular, failure to decode existing data must never overwrite it.
-        var next = try store.load(account: account)
-        next.semesters[draft.semester] = CampusTimetable(semester: draft.semester, dates: dates,
-                                                       courses: draft.courses, slots: draft.slots)
-        next.selected = draft.semester
-        try store.save(next, account: account)
-        archive = next
+        try change(owner: account) { next in try next.importCourses(draft, dates: dates, into: target) }
         notice = "已同步 \(draft.courses.count) 条课程安排"
         problem = nil
     }
 
-    func sync(_ session: CampusSession) async {
-        guard !busy, !account.isEmpty, account == session.accountID else { return }
+    func sync(_ session: CampusSession, into target: String? = nil) async {
+        guard !busy, !session.accountID.isEmpty, account == session.accountID else { return }
+        self.target = target
         let token = UUID(), owner = account
         run = token
         busy = true
@@ -162,7 +187,7 @@ final class ScheduleModel: ObservableObject {
             if let message = response["error"] as? String { throw ScheduleIssue.message(message) }
             guard let string = response["data"] as? String else { throw ScheduleIssue.message("课表数据读取失败") }
             let draft = try JSONDecoder().decode(TimetableDraft.self, from: Data(string.utf8))
-            if let dates = draft.usableDates(previous: archive.semesters[draft.semester]) {
+            if let dates = draft.usableDates(previous: previous(for: draft)) {
                 try commit(draft, dates: dates)
             } else {
                 historical = draft

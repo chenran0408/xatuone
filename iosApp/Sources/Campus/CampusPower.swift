@@ -59,7 +59,45 @@ struct CampusPowerHistory: Codable {
     func save(account: String, defaults: UserDefaults = .standard) throws {
         guard !account.isEmpty else { throw PowerError.message("请先登录教务账号") }
         defaults.set(try JSONEncoder().encode(self), forKey: "xatu.power.v1." + account)
+        NotificationCenter.default.post(name: .powerCacheChanged, object: nil)
     }
+
+    static func clear(account: String, defaults: UserDefaults = .standard) {
+        guard !account.isEmpty else { return }
+        defaults.removeObject(forKey: "xatu.power.v1." + account)
+        CheckInPlace.clear(account: account, defaults: defaults)
+        NotificationCenter.default.post(name: .powerCacheChanged, object: nil)
+    }
+
+    var recentChange: Decimal? {
+        let lastTwo = Array(readings.suffix(2))
+        guard lastTwo.count == 2 else { return nil }
+        return lastTwo[1].amount - lastTwo[0].amount
+    }
+
+    struct Day: Identifiable {
+        let id: Date
+        let last: PowerReading
+        let decrease: Decimal?
+    }
+
+    var daily: [Day] {
+        let calendar = AcademicParser.schoolCalendar
+        let grouped = Dictionary(grouping: readings, by: { calendar.startOfDay(for: $0.time) })
+        var previous: (date: Date, amount: Decimal)?
+        return grouped.keys.sorted().compactMap { date in
+            guard let last = grouped[date]?.max(by: { $0.time < $1.time }) else { return nil }
+            var decrease: Decimal?
+            if let previous, calendar.date(byAdding: .day, value: 1, to: previous.date) == date,
+               previous.amount >= last.amount { decrease = previous.amount - last.amount }
+            previous = (date, last.amount)
+            return Day(id: date, last: last, decrease: decrease)
+        }
+    }
+}
+
+extension Notification.Name {
+    static let powerCacheChanged = Notification.Name("XatuPowerCacheChanged")
 }
 
 enum PowerError: LocalizedError, Equatable {

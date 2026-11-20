@@ -6,6 +6,7 @@ struct ScheduleScreen: View {
     @State private var date = Date()
     @State private var weekly = false
     @State private var detail: CourseDetail?
+    @State private var chooseSyncTarget = false
 
     var body: some View {
         Group {
@@ -23,7 +24,7 @@ struct ScheduleScreen: View {
                     Button("取消", role: .cancel) { model.reply(nil) }
                 }
             } else if let draft = model.historical {
-                HistoricalTermForm(draft: draft, previous: model.archive.semesters[draft.semester],
+                HistoricalTermForm(draft: draft, previous: model.previous(for: draft),
                                    problem: model.problem, confirm: model.confirm, cancel: model.cancel)
             } else {
                 VStack(spacing: 0) {
@@ -39,19 +40,30 @@ struct ScheduleScreen: View {
                     if let table = model.archive.current {
                         tableHeader(table)
                         if weekly {
-                            WeekTimetable(table: table, date: date) { detail = CourseDetail(course: $0, table: table) }
+                            WeekTimetable(table: table, date: date) { course, day in
+                                detail = CourseDetail(course: course, table: table, date: day)
+                            }
                         } else {
                             List {
                                 let courses = table.courses(on: date)
+                                if let adjustment = table.adjustments?[SchoolCalendar.iso(date)] {
+                                    Label(adjustment.lessonDate.map { "\(adjustment.label) · 按 \($0) 上课" } ?? adjustment.label,
+                                          systemImage: "calendar.badge.clock")
+                                }
                                 if table.week(on: date) == nil { Text("所选日期不在本学期").foregroundStyle(.secondary) }
                                 else if courses.isEmpty { Text("当天没有课程").foregroundStyle(.secondary) }
                                 ForEach(courses.indices, id: \.self) { i in
                                     let course = courses[i]
-                                    Button { detail = CourseDetail(course: course, table: table) } label: {
+                                    Button { detail = CourseDetail(course: course, table: table, date: date) } label: {
                                         VStack(alignment: .leading, spacing: 5) {
-                                            Text(course.title).font(.headline)
-                                            Text([table.time(for: course), course.position].compactMap { $0 }.joined(separator: " · "))
-                                            Text([course.sectionText, course.teacher].joined(separator: " · ")).foregroundStyle(.secondary)
+                                            HStack {
+                                                Capsule().fill(ScheduleColors.tint(course)).frame(width: 4)
+                                                Text(table.displayOptions.showNumber ? course.name : course.title).font(.headline)
+                                            }
+                                            Text([table.time(for: course, on: date), table.displayOptions.showLocation ? course.position : nil]
+                                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                                            Text([course.sectionText, table.displayOptions.showTeacher ? course.teacher : nil]
+                                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")).foregroundStyle(.secondary)
                                         }.font(.subheadline).padding(.vertical, 3)
                                     }.buttonStyle(.plain)
                                 }
@@ -64,6 +76,7 @@ struct ScheduleScreen: View {
                             if session.accountID.isEmpty {
                                 Button("登录教务") { session.openAcademic() }.buttonStyle(.borderedProminent)
                             }
+                            NavigationLink("新建课表") { TableNameForm(model: model, owner: session.timetableOwner) }
                         }.frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
@@ -73,22 +86,45 @@ struct ScheduleScreen: View {
         .toolbar {
             if model.busy && model.choice == nil && model.historical == nil {
                 ToolbarItem(placement: .primaryAction) { ProgressView().accessibilityLabel("正在同步课表") }
-            } else if !model.busy && !session.accountID.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("同步课表") { Task { await model.sync(session) } }
+            } else if !model.busy {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if !session.accountID.isEmpty {
+                        Button("同步课表") {
+                            if model.archive.current == nil { Task { await model.sync(session) } }
+                            else { chooseSyncTarget = true }
+                        }
+                    }
+                    NavigationLink {
+                        ScheduleSettingsScreen(model: model, owner: session.timetableOwner).id(session.timetableOwner)
+                    } label: { Label("课表设置", systemImage: "slider.horizontal.3") }
                 }
             }
         }
-        .sheet(item: $detail) { CourseDetailSheet(item: $0) }
+        .confirmationDialog("选择同步目标", isPresented: $chooseSyncTarget, titleVisibility: .visible) {
+            if let key = model.archive.selected, let table = model.archive.current {
+                Button("替换「\(table.title)」的课程") { Task { await model.sync(session, into: key) } }
+            }
+            Button("按教务学期保存") { Task { await model.sync(session) } }
+            Button("取消", role: .cancel) {}
+        }
+        .sheet(item: $detail) { item in
+            CourseDetailSheet(item: item, model: model, owner: session.timetableOwner, key: model.archive.selected)
+        }
         .onAppear { loadAccount() }
-        .onChange(of: session.accountID) { _ in detail = nil; loadAccount() }
+        .onChange(of: session.timetableOwner) { _ in detail = nil; chooseSyncTarget = false; loadAccount() }
+        .onReceive(NotificationCenter.default.publisher(for: .xatuTimetableChanged)) { note in
+            if let owner = note.object as? String, owner == session.timetableOwner { model.reload(owner: owner) }
+        }
         .onChange(of: model.archive.selected) { _ in setInitialDay() }
+        .onChange(of: model.archive.current?.dates) { _ in
+            if model.archive.current?.week(on: date) == nil { setInitialDay() }
+        }
         .environment(\.timeZone, SchoolCalendar.calendar.timeZone)
     }
 
     private func loadAccount() {
-        guard model.account != session.accountID else { return }
-        model.load(session.accountID)
+        guard model.account != session.timetableOwner else { return }
+        model.load(session.timetableOwner)
         setInitialDay()
     }
 
@@ -101,13 +137,14 @@ struct ScheduleScreen: View {
         VStack(spacing: 8) {
             HStack {
                 Menu {
-                    ForEach(model.archive.semesters.keys.sorted(by: >), id: \.self) { name in
-                        Button { model.select(name) } label: {
-                            if table.semester == name { Label(name, systemImage: "checkmark") } else { Text(name) }
+                    ForEach(model.archive.sortedKeys, id: \.self) { key in
+                        let name = model.archive.semesters[key]?.title ?? key
+                        Button { model.select(key) } label: {
+                            if model.archive.selected == key { Label(name, systemImage: "checkmark") } else { Text(name) }
                         }
                     }
                 } label: {
-                    HStack { Text(table.semester).multilineTextAlignment(.leading); Image(systemName: "chevron.down").font(.caption) }
+                    HStack { Text(table.title).multilineTextAlignment(.leading); Image(systemName: "chevron.down").font(.caption) }
                 }
                 Spacer()
             }
@@ -147,11 +184,11 @@ struct ScheduleScreen: View {
 private struct WeekTimetable: View {
     let table: CampusTimetable
     let date: Date
-    let select: (TimetableCourse) -> Void
+    let select: (TimetableCourse, Date) -> Void
     @ScaledMetric(relativeTo: .body) private var columnWidth: CGFloat = 77
 
     var body: some View {
-        let monday = SchoolCalendar.monday(of: date)
+        let monday = table.startOfWeek(containing: date)
         let dayCourses = table.coursesInWeek(containing: date)
         ScrollView([.horizontal, .vertical]) {
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
@@ -160,7 +197,7 @@ private struct WeekTimetable: View {
                     ForEach(0..<7) { day in
                         let shown = SchoolCalendar.add(day, to: monday)
                         VStack(spacing: 3) {
-                            Text(SchoolCalendar.dayNames[day]).font(.subheadline.bold())
+                            Text(SchoolCalendar.dayNames[SchoolCalendar.dayNumber(shown) - 1]).font(.subheadline.bold())
                             Text(String(SchoolCalendar.iso(shown).suffix(5))).font(.caption.monospacedDigit())
                         }.frame(width: columnWidth, alignment: .center)
                          .foregroundStyle(SchoolCalendar.calendar.isDateInToday(shown) ? Color.accentColor : Color.primary)
@@ -176,16 +213,21 @@ private struct WeekTimetable: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(items.indices, id: \.self) { i in
                                     let course = items[i]
-                                    Button { select(course) } label: {
+                                    Button { select(course, SchoolCalendar.add(day - 1, to: monday)) } label: {
                                         VStack(alignment: .leading, spacing: 3) {
                                             if course.startSection == slot.number {
-                                                Text(course.title).font(.caption.bold())
-                                                Text(course.position).font(.caption2).foregroundStyle(.secondary)
+                                                Text(table.displayOptions.showNumber ? course.name : course.title).font(.caption.bold())
+                                                if table.displayOptions.showTeacher && !course.teacher.isEmpty {
+                                                    Text(course.teacher).font(.caption2).foregroundStyle(.secondary)
+                                                }
+                                                if table.displayOptions.showLocation && !course.position.isEmpty {
+                                                    Text(course.position).font(.caption2).foregroundStyle(.secondary)
+                                                }
                                             } else {
                                                 Image(systemName: "arrow.down").font(.caption)
                                             }
                                         }.padding(5).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                         .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                                         .background(ScheduleColors.tint(course).opacity(0.17), in: RoundedRectangle(cornerRadius: 6))
                                     }.buttonStyle(.plain)
                                      .accessibilityLabel("\(course.title)，\(course.sectionText)，\(course.position)")
                                 }
@@ -199,15 +241,25 @@ private struct WeekTimetable: View {
     }
 }
 
-private struct CourseDetail: Identifiable {
+struct CourseDetail: Identifiable {
     let id = UUID()
     let course: TimetableCourse
     let table: CampusTimetable
+    var date: Date?
 }
 
-private struct CourseDetailSheet: View {
+struct CourseDetailSheet: View {
     let item: CourseDetail
+    var model: ScheduleModel?
+    var owner: String?
+    var key: String?
     @Environment(\.dismiss) private var dismiss
+    init(item: CourseDetail, model: ScheduleModel? = nil, owner: String? = nil, key: String? = nil) {
+        self.item = item
+        self.model = model
+        self.owner = owner
+        self.key = key
+    }
     var body: some View {
         NavigationStack {
             let course = item.course
@@ -219,8 +271,15 @@ private struct CourseDetailSheet: View {
                 LabeledContent("周次", value: course.weeks.map(String.init).joined(separator: "、"))
                 if (1...7).contains(course.day) { LabeledContent("星期", value: SchoolCalendar.dayNames[course.day - 1]) }
                 LabeledContent("节次", value: course.sectionText)
-                if let time = item.table.time(for: course) { LabeledContent("时间", value: time) }
+                if let time = item.table.time(for: course, on: item.date) { LabeledContent("时间", value: time) }
                 if let credit = course.credit { LabeledContent("学分", value: credit.formatted()) }
+                if let remark = course.remark, !remark.isEmpty { LabeledContent("备注", value: remark) }
+                if let model, let owner, let key, let index = item.table.courses.firstIndex(of: course) {
+                    NavigationLink("编辑课程") {
+                        CourseEditor(model: model, owner: owner, key: key, table: item.table, index: index,
+                                     afterSave: { dismiss() })
+                    }
+                }
             }.navigationTitle("课程详情").navigationBarTitleDisplayMode(.inline)
              .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }

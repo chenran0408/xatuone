@@ -30,6 +30,7 @@ final class NavigationTests: XCTestCase {
 
     func testSignedOutCourseAndElectricityPaths() {
         let app = launchSignedOut()
+        selectTab("课程", in: app)
         XCTAssertTrue(app.staticTexts["登录后查看课表"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["登录教务"].isHittable)
 

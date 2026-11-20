@@ -12,6 +12,8 @@ struct TimetableCourse: Codable, Equatable {
     var isCustomTime: Bool?
     var customStartTime: String?
     var customEndTime: String?
+    var color: Int?
+    var remark: String?
 
     var title: String { name.components(separatedBy: " | ").first ?? name }
     var number: String? {
@@ -27,11 +29,41 @@ struct TeachingSlot: Codable, Equatable {
     var number: Int
     var startTime: String
     var endTime: String
+    var alias: String?
 }
 
 struct SchoolTermDates: Codable, Equatable {
     var semesterStartDate: String
     var semesterTotalWeeks: Int
+    var firstDayOfWeek: Int?
+    var defaultClassDuration: Int?
+    var defaultBreakDuration: Int?
+}
+
+struct TimetableComboSchedule: Codable, Equatable {
+    var name: String?
+    var publicSchedules: [TimetableScheduleRule]
+}
+
+struct TimetableScheduleRule: Codable, Equatable {
+    var name: String
+    var startDate: String
+    var endDate: String
+    var defaultClassDuration: Int?
+    var defaultBreakDuration: Int?
+    var timeSlots: [TeachingSlot]
+}
+
+struct TimetableDayAdjustment: Codable, Equatable {
+    var label: String
+    // Actual calendar date is the dictionary key. nil cancels that day; a date supplies its regular classes.
+    var lessonDate: String?
+}
+
+struct TimetableDisplay: Codable, Equatable {
+    var showNumber = false
+    var showTeacher = true
+    var showLocation = true
 }
 
 struct TimetableDraft: Decodable {
@@ -84,43 +116,72 @@ struct CampusTimetable: Codable, Equatable {
     var dates: SchoolTermDates
     var courses: [TimetableCourse]
     var slots: [TeachingSlot]
+    var displayName: String?
+    var display: TimetableDisplay?
+    var adjustments: [String: TimetableDayAdjustment]?
+    var comboSchedule: TimetableComboSchedule?
+
+    var title: String { displayName ?? semester }
+    var displayOptions: TimetableDisplay { display ?? TimetableDisplay() }
+    func startOfWeek(containing date: Date) -> Date {
+        let first = dates.firstDayOfWeek ?? 1
+        let offset = (SchoolCalendar.dayNumber(date) - first + 7) % 7
+        return SchoolCalendar.add(-offset, to: SchoolCalendar.calendar.startOfDay(for: date))
+    }
 
     func week(on date: Date) -> Int? {
         guard let start = SchoolCalendar.date(dates.semesterStartDate), date >= start else { return nil }
         let calendar = SchoolCalendar.calendar
-        guard let elapsed = calendar.dateComponents([.day], from: SchoolCalendar.monday(of: start),
+        guard let elapsed = calendar.dateComponents([.day], from: startOfWeek(containing: start),
                                                    to: calendar.startOfDay(for: date)).day, elapsed >= 0 else { return nil }
         let week = elapsed / 7 + 1
         return week <= dates.semesterTotalWeeks ? week : nil
     }
 
     func pageWeek(containing date: Date) -> Int? {
-        week(on: SchoolCalendar.add(6, to: SchoolCalendar.monday(of: date)))
+        week(on: SchoolCalendar.add(6, to: startOfWeek(containing: date)))
     }
 
     func date(inWeek week: Int, keepingWeekdayOf date: Date) -> Date? {
         guard week >= 1, week <= dates.semesterTotalWeeks,
               let start = SchoolCalendar.date(dates.semesterStartDate) else { return nil }
-        let days = (week - 1) * 7 + SchoolCalendar.dayNumber(date) - 1
-        return max(start, SchoolCalendar.add(days, to: SchoolCalendar.monday(of: start)))
+        let offset = (SchoolCalendar.dayNumber(date) - (dates.firstDayOfWeek ?? 1) + 7) % 7
+        return max(start, SchoolCalendar.add((week - 1) * 7 + offset, to: startOfWeek(containing: start)))
     }
 
     func coursesInWeek(containing date: Date) -> [[TimetableCourse]] {
-        let monday = SchoolCalendar.monday(of: date)
-        return (0..<7).map { courses(on: SchoolCalendar.add($0, to: monday)) }
+        let first = startOfWeek(containing: date)
+        return (0..<7).map { courses(on: SchoolCalendar.add($0, to: first)) }
     }
 
     func courses(on date: Date) -> [TimetableCourse] {
-        guard let week = week(on: date) else { return [] }
-        return courses.filter { $0.day == SchoolCalendar.dayNumber(date) && $0.weeks.contains(week) }
-            .sorted { $0.startSection < $1.startSection }
+        guard week(on: date) != nil else { return [] }
+        var lessonDate = date
+        if let adjustment = adjustments?[SchoolCalendar.iso(date)] {
+            guard let source = adjustment.lessonDate.flatMap(SchoolCalendar.date) else { return [] }
+            lessonDate = source
+        }
+        guard let week = week(on: lessonDate) else { return [] }
+        let weekday = SchoolCalendar.dayNumber(lessonDate)
+        return courses.filter { $0.day == weekday && $0.weeks.contains(week) }
+            .sorted { ($0.startSection, $0.name) < ($1.startSection, $1.name) }
     }
-    func time(for course: TimetableCourse) -> String? {
+
+    func slots(on date: Date) -> [TeachingSlot] {
+        let day = SchoolCalendar.iso(date)
+        guard let rule = comboSchedule?.publicSchedules.first(where: { $0.startDate <= day && day <= $0.endDate })
+        else { return slots }
+        if slots.isEmpty { return rule.timeSlots }
+        return slots.map { base in rule.timeSlots.first(where: { $0.number == base.number }) ?? base }
+    }
+
+    func time(for course: TimetableCourse, on date: Date? = nil) -> String? {
         if course.isCustomTime == true, let start = course.customStartTime, let end = course.customEndTime {
             return "\(start)–\(end)"
         }
-        guard let start = slots.first(where: { $0.number == course.startSection })?.startTime,
-              let end = slots.first(where: { $0.number == course.endSection })?.endTime else { return nil }
+        let effective = date.map { slots(on: $0) } ?? slots
+        guard let start = effective.first(where: { $0.number == course.startSection })?.startTime,
+              let end = effective.first(where: { $0.number == course.endSection })?.endTime else { return nil }
         return "\(start)–\(end)"
     }
 }
@@ -150,5 +211,6 @@ struct TimetableStore {
         let destination = try file(for: account)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode(value).write(to: destination, options: [.atomic, .completeFileProtection])
+        NotificationCenter.default.post(name: .xatuTimetableChanged, object: account)
     }
 }
