@@ -1,0 +1,43 @@
+name: iPhone preview
+on:
+  push:
+    branches: [ios/campus-preview]
+    paths: ['iosApp/**', 'shared/assets/offline_repo/schools/resources/XATU/myschool.js', '.github/workflows/ios-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: iphone-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  iphone:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare XcodeGen
+        run: |
+          curl --fail --location --silent --show-error https://github.com/yonaskolb/XcodeGen/releases/download/2.48.0/xcodegen.zip -o "$RUNNER_TEMP/xcodegen.zip"
+          echo "620c9f0dc10849f94728ab5df52d225ebab8187439dd6fee1925e59e80dff892  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/tool"
+          binary="$(find "$RUNNER_TEMP/tool" -type f -name xcodegen | head -1)"
+          test -x "$binary"
+          echo "$(dirname "$binary")" >> "$GITHUB_PATH"
+          xcodebuild -version
+      - name: Build iPhone device IPA
+        run: bash iosApp/build-ipa.sh "$RUNNER_TEMP/xatu-ios"
+      - name: Run tests on iPhone Simulator
+        working-directory: iosApp
+        run: |
+          device="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; ds=json.load(sys.stdin)["devices"]; print(next(d["udid"] for rt,items in sorted(ds.items(),reverse=True) if ".iOS-" in rt for d in items if d["name"].startswith("iPhone")))' )"
+          xcodebuild test -quiet -project XatuOne.xcodeproj -scheme XatuOne -configuration Debug \
+            -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
+            -derivedDataPath "$RUNNER_TEMP/ios-tests" -resultBundlePath "$RUNNER_TEMP/XatuOneTests.xcresult"
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/XatuOneTests.xcresult"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XATU-One-iPhone-unsigned
+          path: |
+            ${{ runner.temp }}/xatu-ios/*.ipa
+            ${{ runner.temp }}/xatu-ios/SHA256SUMS
+          if-no-files-found: error

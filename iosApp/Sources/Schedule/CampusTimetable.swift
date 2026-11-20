@@ -1,0 +1,137 @@
+import Foundation
+
+struct TimetableCourse: Codable, Equatable {
+    var name: String
+    var teacher: String
+    var position: String
+    var day: Int
+    var startSection: Int
+    var endSection: Int
+    var weeks: [Int]
+    var credit: Double?
+    var isCustomTime: Bool?
+    var customStartTime: String?
+    var customEndTime: String?
+
+    var title: String { name.components(separatedBy: " | ").first ?? name }
+    var number: String? {
+        guard let separator = name.range(of: " | ", options: .backwards) else { return nil }
+        return String(name[separator.upperBound...])
+    }
+    var sectionText: String {
+        startSection == endSection ? "第 \(startSection) 节" : "第 \(startSection)–\(endSection) 节"
+    }
+}
+
+struct TeachingSlot: Codable, Equatable {
+    var number: Int
+    var startTime: String
+    var endTime: String
+}
+
+struct SchoolTermDates: Codable, Equatable {
+    var semesterStartDate: String
+    var semesterTotalWeeks: Int
+}
+
+struct TimetableDraft: Decodable {
+    var semester: String
+    var courses: [TimetableCourse]
+    var slots: [TeachingSlot]
+    var config: SchoolTermDates?
+
+    var lastWeek: Int { courses.flatMap(\.weeks).max() ?? 1 }
+
+    func usableDates(previous: CampusTimetable?) -> SchoolTermDates? {
+        let candidate = config ?? (previous?.semester == semester ? previous?.dates : nil)
+        guard let dates = candidate, SchoolCalendar.date(dates.semesterStartDate) != nil,
+              dates.semesterTotalWeeks >= lastWeek else { return nil }
+        return dates
+    }
+}
+
+enum ScheduleIssue: LocalizedError {
+    case message(String)
+    var errorDescription: String? { if case let .message(text) = self { return text }; return nil }
+}
+
+enum SchoolCalendar {
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600)!
+        calendar.firstWeekday = 2
+        return calendar
+    }
+    static func date(_ text: String) -> Date? {
+        let parts = text.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let result = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+              iso(result) == text else { return nil }
+        return result
+    }
+    static func iso(_ date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+    }
+    static func dayNumber(_ date: Date) -> Int { (calendar.component(.weekday, from: date) + 5) % 7 + 1 }
+    static func add(_ days: Int, to date: Date) -> Date { calendar.date(byAdding: .day, value: days, to: date)! }
+    static func monday(of date: Date) -> Date { add(1 - dayNumber(date), to: calendar.startOfDay(for: date)) }
+    static let dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+}
+
+struct CampusTimetable: Codable, Equatable {
+    var semester: String
+    var dates: SchoolTermDates
+    var courses: [TimetableCourse]
+    var slots: [TeachingSlot]
+
+    func week(on date: Date) -> Int? {
+        guard let start = SchoolCalendar.date(dates.semesterStartDate) else { return nil }
+        let calendar = SchoolCalendar.calendar
+        guard let elapsed = calendar.dateComponents([.day], from: SchoolCalendar.monday(of: start),
+                                                   to: calendar.startOfDay(for: date)).day, elapsed >= 0 else { return nil }
+        let week = elapsed / 7 + 1
+        return week <= dates.semesterTotalWeeks ? week : nil
+    }
+    func courses(on date: Date) -> [TimetableCourse] {
+        guard let week = week(on: date) else { return [] }
+        return courses.filter { $0.day == SchoolCalendar.dayNumber(date) && $0.weeks.contains(week) }
+            .sorted { $0.startSection < $1.startSection }
+    }
+    func time(for course: TimetableCourse) -> String? {
+        if course.isCustomTime == true, let start = course.customStartTime, let end = course.customEndTime {
+            return "\(start)–\(end)"
+        }
+        guard let start = slots.first(where: { $0.number == course.startSection })?.startTime,
+              let end = slots.first(where: { $0.number == course.endSection })?.endTime else { return nil }
+        return "\(start)–\(end)"
+    }
+}
+
+struct AccountTimetables: Codable, Equatable {
+    var selected: String?
+    var semesters: [String: CampusTimetable] = [:]
+    var current: CampusTimetable? { selected.flatMap { semesters[$0] } }
+}
+
+struct TimetableStore {
+    let directory: URL
+    init(directory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Timetables", isDirectory: true)) {
+        self.directory = directory
+    }
+    private func file(for account: String) throws -> URL {
+        guard !account.isEmpty, account.allSatisfy({ $0.isHexDigit }) else { throw ScheduleIssue.message("请先登录教务账号") }
+        return directory.appendingPathComponent(account + ".json")
+    }
+    func load(account: String) throws -> AccountTimetables {
+        let file = try file(for: account)
+        guard FileManager.default.fileExists(atPath: file.path) else { return AccountTimetables() }
+        return try JSONDecoder().decode(AccountTimetables.self, from: Data(contentsOf: file))
+    }
+    func save(_ value: AccountTimetables, account: String) throws {
+        let destination = try file(for: account)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(value).write(to: destination, options: [.atomic, .completeFileProtection])
+    }
+}
