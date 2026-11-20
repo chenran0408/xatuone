@@ -15,7 +15,7 @@
 
 在本分支最近通过的 [iPhone 构建](https://github.com/chenran0408/xatuone/actions/workflows/ios-preview.yml?query=branch%3Aios%2Fcampus-preview) 下载 `XATU-One-iPhone-unsigned`，解压取得 IPA。下载 Actions 附件通常需要登录 GitHub。
 
-在已配置好的 AltStore Classic 中打开 **My Apps → ＋**，选择 IPA，用自己的 Apple 账号签名安装。使用免费 Personal Team 时签名通常有效 7 天，可在到期前刷新。真机按系统提示开启开发者模式。[AltStore 使用说明](https://faq.altstore.io/altstore-classic/your-altstore) · [Apple 账号权限与签名期限](https://developer.apple.com/help/account/basics/about-your-developer-account)
+使用自己的 Apple 账号为 IPA 签名后安装。免费 Personal Team 的签名有效期为 7 天。[Apple 账号权限与签名期限](https://developer.apple.com/help/account/basics/about-your-developer-account)
 
 ## 构建与测试
 
