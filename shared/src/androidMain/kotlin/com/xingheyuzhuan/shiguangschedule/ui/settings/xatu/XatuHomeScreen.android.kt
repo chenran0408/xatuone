@@ -1,7 +1,9 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.xatu
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -115,18 +117,22 @@ private fun HomeDate(state: XatuHomeUiState, today: TodayUiState, now: LocalDate
             Text(date, style = MaterialTheme.typography.titleLarge)
             Text(week, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        UiStyle.MIUIX -> Column(
-            Modifier.fillMaxWidth().padding(horizontal = UiMetrics.PageInset, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        UiStyle.MIUIX -> FlowRow(
+            Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             top.yukonga.miuix.kmp.basic.Text(
-                date,
+                date, modifier = Modifier.align(Alignment.CenterVertically),
                 style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2,
             )
             top.yukonga.miuix.kmp.basic.Text(
                 week,
+                modifier = Modifier.align(Alignment.CenterVertically)
+                    .background(top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.secondaryContainer, CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
                 style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body2,
-                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSecondaryContainer,
             )
         }
         UiStyle.COUI -> FlowRow(
@@ -243,6 +249,52 @@ private fun HomeCourseCard(
                 TodayStatus.Normal -> if (state.courses.isEmpty()) "今天没有课程" else "今天的课程已结束"
             }
         }
+        if (state is TodayUiState.Success && state.status != TodayStatus.NoSemesterConfig) {
+            val sync = { onNavigate(xatuCourseImport) }
+            when (LocalUiStyle.current) {
+                UiStyle.MIUIX -> {
+                    top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) {
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val todayRow: @Composable (Modifier) -> Unit = { modifier ->
+                                top.yukonga.miuix.kmp.basic.BasicComponent(
+                                    modifier = modifier,
+                                    title = status, onClick = openToday,
+                                    endActions = {
+                                        top.yukonga.miuix.kmp.basic.Icon(vectorResource(Res.drawable.chevron_right_24px),
+                                            null, Modifier.size(18.dp), tint = uiStyleColors().secondaryText)
+                                    },
+                                    insideMargin = PaddingValues(horizontal = UiMetrics.PageInset, vertical = 14.dp),
+                                )
+                            }
+                            if (maxWidth / LocalDensity.current.fontScale >= 290.dp) {
+                                Row(Modifier.fillMaxWidth().padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    todayRow(Modifier.weight(1f))
+                                    UiButton("同步课表", sync, selected = true)
+                                }
+                            } else {
+                                Column {
+                                    todayRow(Modifier.fillMaxWidth())
+                                    UiButton("同步课表", sync, Modifier.padding(start = 12.dp, bottom = 8.dp), selected = true)
+                                }
+                            }
+                        }
+                    }
+                    return
+                }
+                UiStyle.COUI -> {
+                    com.itos.coui.layout.Group(title = "今日课表", headerActions = { UiButton("同步课表", sync) }) {
+                        com.itos.coui.layout.Item(
+                            icon = { Icon(com.itos.coui.icons.CouiIcons.Calendar, null, tint = uiStyleColors().accent) },
+                            title = { com.itos.coui.text.Text(text = status, kind = com.itos.coui.text.CouiTextKind.PreferenceTitle) },
+                            trailing = { Icon(com.itos.coui.icons.CouiIcons.Next, null, Modifier.size(16.dp), tint = uiStyleColors().secondaryText) },
+                            onClick = openToday,
+                        )
+                    }
+                    return
+                }
+                UiStyle.MATERIAL -> Unit
+            }
+        }
         val courseSummary: @Composable ColumnScope.() -> Unit = {
             if (state == TodayUiState.Loading || state is TodayUiState.Error) {
                 UiServiceRow("今日课程", "", openToday)
@@ -289,6 +341,7 @@ private fun HomeCourseCard(
                 top.yukonga.miuix.kmp.basic.Text(
                     "$startTime–$endTime",
                     style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title3,
+                    color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary,
                 )
             }
             if (current.course.position.isNotBlank()) {
@@ -305,7 +358,8 @@ private fun HomeCourseCard(
                 )
             }
         } else if (LocalUiStyle.current == UiStyle.COUI) {
-            com.itos.coui.text.Text(text = current.course.name, kind = com.itos.coui.text.CouiTextKind.SectionTitle)
+            com.itos.coui.text.Text(text = current.course.name, kind = com.itos.coui.text.CouiTextKind.SectionTitle,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start)
             if (startTime != null && endTime != null) {
                 com.itos.coui.text.Text(text = "$startTime–$endTime", kind = com.itos.coui.text.CouiTextKind.PreferenceTitle, color = accent)
             }
@@ -339,14 +393,20 @@ private fun HomeCourseCard(
                 details()
             }
         }
-        UiStyle.MIUIX -> Column {
-            top.yukonga.miuix.kmp.basic.SmallTitle(label, insideMargin = PaddingValues(horizontal = UiMetrics.PageInset, vertical = 4.dp))
-            top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) {
-                top.yukonga.miuix.kmp.basic.BasicComponent(onClick = openCourse,
-                    insideMargin = PaddingValues(UiMetrics.PageInset)) {
-                    details()
-                }
+        UiStyle.MIUIX -> top.yukonga.miuix.kmp.basic.Card(
+            modifier = Modifier.fillMaxWidth(), insideMargin = PaddingValues(UiMetrics.PageInset),
+            showIndication = true, onClick = openCourse,
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                top.yukonga.miuix.kmp.basic.Text(label, modifier = Modifier.weight(1f),
+                    style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body2,
+                    color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary)
+                top.yukonga.miuix.kmp.basic.Icon(vectorResource(Res.drawable.chevron_right_24px), null,
+                    Modifier.size(20.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), content = details)
         }
         UiStyle.COUI -> com.itos.coui.layout.Group(title = label) {
             com.itos.coui.layout.Item(
@@ -375,8 +435,7 @@ private fun HomeCourseActions(state: TodayUiState, onNavigate: (Destination) -> 
 @Composable
 private fun HomeElectricitySummary(snapshot: XatuCampusSnapshot?, query: com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuElectricityQueryState, onRefresh: () -> Unit, onNavigate: (Destination) -> Unit) {
     val open = { onNavigate(Destination.XatuService("electricity")) }
-    val openPay = { url: String -> onNavigate(Destination.WebView(initialUrl = url, serviceTitle = "校园缴费平台")) }
-    val loginToRefresh = rememberElectricityLogin(openPay, onRefresh)
+    val loginToRefresh = rememberElectricityLogin(onRefresh)
     var showRoomPicker by rememberSaveable { mutableStateOf(false) }
     val state = query.takeIf { it.dorm == snapshot?.dorm } ?: com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuElectricityQueryState()
     val style = LocalUiStyle.current
@@ -395,18 +454,15 @@ private fun HomeElectricitySummary(snapshot: XatuCampusSnapshot?, query: com.xin
                 }
             }
             snapshot.dorm == null -> {
-                if (style == UiStyle.COUI) {
-                    com.itos.coui.layout.Item(
-                        title = { UiText("尚未选择房间") },
-                        onClick = { showRoomPicker = true },
-                    )
-                } else {
-                    UiText("尚未选择房间", style = MaterialTheme.typography.titleMedium)
-                    UiButton("选择房间", { showRoomPicker = true })
+                Column(Modifier.padding(horizontal = if (style == UiStyle.COUI) UiMetrics.PageInset else 0.dp)) {
+                    ElectricityFirstRoomAction { showRoomPicker = true }
                 }
             }
             else -> {
                 val dorm = snapshot.dorm
+                val needsLogin = electricityNeedsLogin(state)
+                val refreshLabel = if (needsLogin) "登录缴费平台" else if (state.loading) "正在刷新…" else "刷新电量"
+                val refresh = if (needsLogin) loginToRefresh else onRefresh
                 val room = "${dorm.areaName.trim()} · ${dorm.buildingName.trim()} · ${dorm.roomName.trim()}"
                 val readingTime = if (snapshot.balanceAt > 0) {
                     "${electricityReadingSource(snapshot, state)} ${campusDateTime(snapshot.balanceAt)}"
@@ -469,26 +525,22 @@ private fun HomeElectricitySummary(snapshot: XatuCampusSnapshot?, query: com.xin
                 ElectricityRequestFeedback(state)
                 if (style == UiStyle.COUI) {
                     com.itos.coui.layout.Item(
-                        title = { UiText(if (state.loading) "正在刷新…" else "刷新电量") },
+                        title = { UiText(refreshLabel) },
                         enabled = !state.loading,
-                        onClick = onRefresh,
+                        onClick = refresh,
                     )
                     com.itos.coui.layout.Item(title = { UiText("切换房间") }, onClick = { showRoomPicker = true })
-                    if (state.requiresLogin) {
-                        com.itos.coui.layout.Item(title = { UiText("登录缴费平台") }, onClick = loginToRefresh)
-                    }
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        UiButton(if (state.loading) "正在刷新…" else "刷新电量", onRefresh, enabled = !state.loading)
+                        UiButton(refreshLabel, refresh, enabled = !state.loading)
                         UiButton("切换房间", { showRoomPicker = true })
-                        if (state.requiresLogin) UiButton("登录缴费平台", loginToRefresh)
                     }
                 }
             }
         }
     }
     if (showRoomPicker && snapshot != null) {
-        ElectricityRoomSheet(snapshot, openPay, onDismiss = { showRoomPicker = false })
+        ElectricityRoomSheet(snapshot, onDismiss = { showRoomPicker = false })
     }
 }
 

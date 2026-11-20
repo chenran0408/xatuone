@@ -35,6 +35,14 @@ data class SslErrorData(
 )
 
 sealed interface WebUiEvent {
+    data class ConfirmSemesterDates(
+        val semester: String,
+        val startDate: String?,
+        val totalWeeks: Int?,
+        val lastCourseWeek: Int,
+        val onResult: (Pair<String, Int>?) -> Unit,
+    ) : WebUiEvent
+
     data class ShowAlert(
         val data: AlertDialogData,
         val callback: (confirmed: Boolean) -> Unit

@@ -19,8 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.WebViewScreen
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.chip.ChipTabRow
@@ -65,18 +66,47 @@ internal fun ElectricityReading(balance: String?) {
 }
 
 @Composable
-internal fun rememberElectricityLogin(onOpen: (String) -> Unit, onReturn: () -> Unit): () -> Unit {
-    var refreshPending by rememberSaveable { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (refreshPending) {
-            refreshPending = false
-            onReturn()
+internal fun rememberElectricityLogin(onAuthenticated: () -> Unit): () -> Unit {
+    var open by rememberSaveable { mutableStateOf(false) }
+    if (open) {
+        val service: XatuCampusService = koinInject()
+        val authenticated by rememberUpdatedState(onAuthenticated)
+        val close = { open = false }
+        Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            WebViewScreen(
+                onNavigate = { close() }, onBack = close,
+                initialUrl = XATU_PAY_LOGIN, assetJsPath = null, serviceTitle = "登录缴费平台",
+                confirmServiceSession = service::awaitPayLogin,
+                onLoginComplete = {
+                    if (open) {
+                        close()
+                        authenticated()
+                    }
+                },
+            )
         }
     }
-    return {
-        refreshPending = true
-        onOpen(XATU_PAY_LOGIN)
+    return { open = true }
+}
+
+@Composable
+internal fun ElectricityFirstRoomAction(onSelect: () -> Unit) {
+    val service: XatuCampusService = koinInject()
+    var hasCookie by remember { mutableStateOf(service.hasPayCookie()) }
+    val login = rememberElectricityLogin { hasCookie = true; onSelect() }
+    if (hasCookie) {
+        UiFeedback("尚未选择房间", UiFeedbackKind.EMPTY)
+        UiButton("选择房间", onSelect)
+    } else {
+        UiFeedback("请先登录缴费平台", UiFeedbackKind.INFO)
+        UiButton("登录缴费平台", login)
     }
+}
+
+@Composable
+internal fun electricityNeedsLogin(state: XatuElectricityQueryState): Boolean {
+    val service: XatuCampusService = koinInject()
+    return state.requiresLogin || !remember(state) { service.hasPayCookie() }
 }
 
 internal fun electricityReadingSource(snapshot: XatuCampusSnapshot, query: XatuElectricityQueryState): String = when {
@@ -147,17 +177,21 @@ internal fun ElectricityBalanceContent(snapshot: XatuCampusSnapshot, onOpen: (St
     var trendDays by rememberSaveable(saved) { mutableIntStateOf(7) }
     val daily = remember(snapshot.balanceHistory) { summarizeXatuElectricity(snapshot.balanceHistory) }
     if (showRoomPicker) {
-        ElectricityRoomSheet(snapshot, onOpen, onDismiss = { showRoomPicker = false })
+        ElectricityRoomSheet(snapshot, onDismiss = { showRoomPicker = false })
     }
     if (saved == null) {
         ElectricityPanel("剩余电量") {
-            UiFeedback("尚未选择房间", UiFeedbackKind.EMPTY)
-            UiButton("选择房间", { showRoomPicker = true })
+            ElectricityFirstRoomAction { showRoomPicker = true }
         }
         return
     }
-    val loginToRefresh = rememberElectricityLogin(onOpen) {
+    val loginToRefresh = rememberElectricityLogin {
         scope.launch { repository.refresh(saved) }
+    }
+    val needsLogin = electricityNeedsLogin(state)
+    val refreshLabel = if (needsLogin) "登录缴费平台" else if (state.loading) "正在刷新…" else "刷新电量"
+    val refresh: () -> Unit = {
+        if (needsLogin) loginToRefresh() else scope.launch { repository.refresh(saved) }
     }
     ElectricityPanel("剩余电量") {
         val colors = uiStyleColors()
@@ -193,8 +227,7 @@ internal fun ElectricityBalanceContent(snapshot: XatuCampusSnapshot, onOpen: (St
         if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 top.yukonga.miuix.kmp.basic.TextButton(
-                    if (state.loading) "正在刷新…" else "刷新电量",
-                    { scope.launch { repository.refresh(saved) } },
+                    refreshLabel, refresh,
                     enabled = !state.loading,
                     colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
                 )
@@ -202,8 +235,8 @@ internal fun ElectricityBalanceContent(snapshot: XatuCampusSnapshot, onOpen: (St
             }
         } else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.COUI) {
             CouiAction(
-                text = if (state.loading) "正在刷新…" else "刷新电量",
-                onClick = { scope.launch { repository.refresh(saved) } },
+                text = refreshLabel,
+                onClick = refresh,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.loading,
                 filled = true,
@@ -222,15 +255,13 @@ internal fun ElectricityBalanceContent(snapshot: XatuCampusSnapshot, onOpen: (St
                 onClick = { showRoomPicker = true },
             )
         } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { scope.launch { repository.refresh(saved) } }, enabled = !state.loading) {
+            Button(onClick = refresh, enabled = !state.loading) {
                 if (state.loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Text(if (state.loading) "正在刷新…" else "刷新电量")
+                Text(refreshLabel)
             }
             OutlinedButton(onClick = { showRoomPicker = true }) { Text("切换房间") }
         }
-        if (state.requiresLogin) {
-            UiActionButton(onClick = loginToRefresh, modifier = Modifier.fillMaxWidth(), text = "登录缴费平台")
-        } else {
+        if (!needsLogin) {
             UiButton("电费充值", { onOpen(XATU_PAY_LOGIN) })
         }
     }
@@ -380,15 +411,15 @@ internal fun ElectricityBalanceContent(snapshot: XatuCampusSnapshot, onOpen: (St
 }
 
 @Composable
-internal fun ElectricitySettingsContent(snapshot: XatuCampusSnapshot, repository: XatuCampusRepository, service: XatuCampusService, onOpen: (String) -> Unit) {
-    ElectricityRoomForm(snapshot, repository, service, onOpen)
+internal fun ElectricitySettingsContent(snapshot: XatuCampusSnapshot, repository: XatuCampusRepository, service: XatuCampusService) {
+    ElectricityRoomForm(snapshot, repository, service)
 }
 
 @Composable
-internal fun ElectricityRoomSheet(snapshot: XatuCampusSnapshot, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun ElectricityRoomSheet(snapshot: XatuCampusSnapshot, onDismiss: () -> Unit) {
     val repository: XatuCampusRepository = koinInject()
     val service: XatuCampusService = koinInject()
-    ElectricityRoomForm(snapshot, repository, service, onOpen, onDismiss)
+    ElectricityRoomForm(snapshot, repository, service, onDismiss)
 }
 
 @Composable
@@ -396,7 +427,6 @@ private fun ElectricityRoomForm(
     snapshot: XatuCampusSnapshot,
     repository: XatuCampusRepository,
     service: XatuCampusService,
-    onOpen: (String) -> Unit,
     onDismiss: (() -> Unit)? = null,
 ) {
     val electricity: XatuElectricityRepository = koinInject()
@@ -417,13 +447,19 @@ private fun ElectricityRoomForm(
     val room = rooms.firstOrNull { it.id == roomId }
     var status by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    var requiresLogin by remember { mutableStateOf(false) }
+    var requiresLogin by remember { mutableStateOf(!service.hasPayCookie()) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
 
     LaunchedEffect(project?.id, area?.id, building?.id, reload) {
+        if (!service.hasPayCookie()) {
+            requiresLogin = true
+            error = XatuPaySessionExpired(false).message
+            loading = false
+            return@LaunchedEffect
+        }
         loading = true
         error = null
         requiresLogin = false
@@ -431,6 +467,7 @@ private fun ElectricityRoomForm(
             when {
                 project == null -> {
                     status = "正在读取电费项目…"
+                    service.confirmPaySession()
                     projects = service.projects()
                     status = if (projects.isEmpty()) "暂无可用电费项目" else ""
                 }
@@ -463,9 +500,21 @@ private fun ElectricityRoomForm(
     ) else null
     val matchesSaved = selected != null && saved != null && selected.projectId == saved.projectId && selected.areaId == saved.areaId && selected.buildingId == saved.buildingId && selected.roomId == saved.roomId
 
-    val fields: @Composable () -> Unit = {
+    val matchingQuery = query.takeIf { !saving && it.dorm == saved && onDismiss == null }
+    val login = rememberElectricityLogin {
+        if (requiresLogin) reload++
+        if (matchingQuery?.requiresLogin == true && saved != null) {
+            scope.launch { electricity.refresh(saved) }
+        }
+    }
+    val fields: @Composable () -> Unit = fields@{
+        if (requiresLogin) {
+            UiFeedback(error ?: "请先登录缴费平台", UiFeedbackKind.INFO)
+            UiButton("登录缴费平台", login)
+            return@fields
+        }
         if (status.isNotBlank() && !saving) UiFeedback(status, if (loading) UiFeedbackKind.LOADING else UiFeedbackKind.INFO)
-        error?.let { UiFeedback(it, if (requiresLogin) UiFeedbackKind.INFO else UiFeedbackKind.ERROR) }
+        error?.let { UiFeedback(it, UiFeedbackKind.ERROR) }
         ElectricityOptionPicker("项目", projects, project, !loading && !saving) {
             if (projectId != it.id) {
                 projectId = it.id
@@ -509,9 +558,8 @@ private fun ElectricityRoomForm(
                 } finally { saving = false }
             }
         }, enabled = selected != null && !matchesSaved && !loading && !saving, modifier = Modifier.fillMaxWidth(), text = if (saving) "正在保存与查询…" else if (matchesSaved) "当前房间已保存" else "保存房间并查询")
-        val matchingQuery = query.takeIf { !saving && it.dorm == saved && onDismiss == null }
         matchingQuery?.let { ElectricityRequestFeedback(it) }
-        if (!saving && (requiresLogin || matchingQuery?.requiresLogin == true)) UiActionButton(onClick = { onOpen(XATU_PAY_LOGIN) }, modifier = Modifier.fillMaxWidth(), text = "登录缴费平台")
+        if (matchingQuery?.requiresLogin == true) UiButton("登录缴费平台", login)
         if (onDismiss == null || error != null || (!loading && status.isNotBlank())) UiActionButton(onClick = {
             projects = emptyList()
             areas = emptyList()

@@ -1,9 +1,13 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web
 
 import com.xingheyuzhuan.shiguangschedule.data.model.CourseImportExport
+import com.xingheyuzhuan.shiguangschedule.data.model.ScriptCourseConfig
+import com.xingheyuzhuan.shiguangschedule.data.model.ScriptCourseImport
 import com.xingheyuzhuan.shiguangschedule.data.repository.CourseConversionRepository
 import com.xingheyuzhuan.shiguangschedule.ui.components.ToastManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +33,9 @@ class WebBridgeHandler(
     private var importTableId: String? = null
     private var importActive = false
     private var trackedCourseImport = false
+    private var pending: ScriptCourseImport? = null
+    private var committing = false
+    private var lastScriptMessage: String? = null
     private val _importProgress = MutableStateFlow(CourseImportProgress())
     val importProgress = _importProgress.asStateFlow()
 
@@ -36,13 +43,15 @@ class WebBridgeHandler(
         _importProgress.update { it.copy(running = false, error = message, message = message) }
         importActive = false
         importTableId = null
+        pending = null
     }
 
     private fun importScriptSettled(message: String?) {
-        if (!trackedCourseImport || !_importProgress.value.running) return
-        _importProgress.update { it.scriptReturned(message) }
+        if (!trackedCourseImport || committing || !_importProgress.value.running) return
+        _importProgress.update { it.copy(message = lastScriptMessage ?: it.message).scriptReturned(message) }
         importActive = false
         importTableId = null
+        pending = null
     }
 
 
@@ -73,6 +82,9 @@ class WebBridgeHandler(
         _importProgress.value = CourseImportProgress(running = tableId != null, message = "正在读取教务参数…")
         this.importTableId = tableId
         this.importActive = tableId != null
+        this.pending = if (trackCourseImport && tableId != null) ScriptCourseImport() else null
+        this.committing = false
+        this.lastScriptMessage = null
         this.isComboScheduleImported = false // 切换或重置课表时重置状态
         this.latestPresetTimeSlots = null    // 重置基准时间缓存
     }
@@ -135,8 +147,12 @@ class WebBridgeHandler(
      * 显示短提示 Toast。
      */
     fun showToast(message: String) {
-        if (_importProgress.value.running) _importProgress.update { it.copy(message = message) }
-        ToastManager.show(message)
+        if (trackedCourseImport) {
+            lastScriptMessage = message
+        } else {
+            if (_importProgress.value.running) _importProgress.update { it.copy(message = message) }
+            ToastManager.show(message)
+        }
     }
 
     /**
@@ -266,6 +282,11 @@ class WebBridgeHandler(
      * 注意：强制清除课程的 color 和 remark 字段（置为 null）。
      */
     fun saveImportedCourses(coursesJsonString: String, callbackId: String? = null) {
+        val parse = {
+            json.decodeFromString<List<CourseImportExport.ImportCourseJsonModel>>(coursesJsonString)
+                .map { it.copy(color = null, remark = null) }
+        }
+        if (stage(callbackId) { it.courses = parse() }) return
         coroutineScope.launch(Dispatchers.Default) {
             val tableId = importTableId
             if (tableId == null) {
@@ -277,13 +298,7 @@ class WebBridgeHandler(
             }
 
             val result = runCatching {
-                val rawCoursesList = json.decodeFromString<List<CourseImportExport.ImportCourseJsonModel>>(coursesJsonString)
-                val sanitizedCoursesList = rawCoursesList.map { course ->
-                    course.copy(
-                        color = null,
-                        remark = null
-                    )
-                }
+                val sanitizedCoursesList = parse()
                 courseConversionRepository.importCourses(tableId, sanitizedCoursesList)
                 sanitizedCoursesList.size
             }
@@ -306,6 +321,7 @@ class WebBridgeHandler(
      * 解析并保存课表配置信息。
      */
     fun saveCourseConfig(configJsonString: String, callbackId: String? = null) {
+        if (stage(callbackId) { it.config = json.decodeFromString<ScriptCourseConfig>(configJsonString) }) return
         coroutineScope.launch(Dispatchers.Default) {
             val tableId = importTableId
             if (tableId == null) {
@@ -339,6 +355,14 @@ class WebBridgeHandler(
      * 注意：强制清除时间段的 alias 字段（置为 null）。
      */
     fun savePresetTimeSlots(timeSlotsJsonString: String, callbackId: String? = null) {
+        val parse = {
+            json.decodeFromString<List<CourseImportExport.TimeSlotJsonModel>>(timeSlotsJsonString)
+                .map { it.copy(alias = null) }
+        }
+        if (stage(callbackId) {
+                require(it.combo == null) { "作息方案已提交" }
+                it.slots = parse()
+            }) return
         // 关键时序拦截：如果作息方案已经导入成功，禁止再导入基础时间，防止覆盖方案的绑定状态
         if (isComboScheduleImported) {
             val errorMsg = "顺序拦截：已导入作息方案，禁止再调用基础时间导入以防覆盖方案状态。"
@@ -360,11 +384,7 @@ class WebBridgeHandler(
             }
 
             val result = runCatching {
-                val rawTimeSlotsJson = json.decodeFromString<List<CourseImportExport.TimeSlotJsonModel>>(timeSlotsJsonString)
-                // 强制过滤清空 alias
-                val sanitizedTimeSlotsJson = rawTimeSlotsJson.map { slot ->
-                    slot.copy(alias = null)
-                }
+                val sanitizedTimeSlotsJson = parse()
                 courseConversionRepository.importTimeSlots(tableId, sanitizedTimeSlotsJson)
                 sanitizedTimeSlotsJson
             }
@@ -389,6 +409,16 @@ class WebBridgeHandler(
      * 语法糖支持：要求必须依赖 savePresetTimeSlots 的缓存结果。自动填充未提供的节次，屏蔽超额节次。
      */
     fun saveComboSchedule(comboScheduleJsonString: String, callbackId: String? = null) {
+        fun parse(base: List<CourseImportExport.TimeSlotJsonModel>): CourseImportExport.ComboScheduleJsonModel {
+            val raw = json.decodeFromString<CourseImportExport.ComboScheduleJsonModel>(comboScheduleJsonString)
+            return raw.copy(publicSchedules = raw.publicSchedules.map { template ->
+                template.copy(timeSlots = mergeAndAlignTimeSlots(base, template.timeSlots))
+            })
+        }
+        if (stage(callbackId) { batch ->
+                val base = requireNotNull(batch.slots) { "缺少基础作息" }
+                batch.combo = parse(base.sortedBy { it.number })
+            }) return
         // 强校验：检查之前是否成功调用了 savePresetTimeSlots
         val baseSlots = latestPresetTimeSlots
         if (baseSlots.isNullOrEmpty()) {
@@ -411,19 +441,7 @@ class WebBridgeHandler(
             }
 
             val result = runCatching {
-                val rawComboSchedule = json.decodeFromString<CourseImportExport.ComboScheduleJsonModel>(comboScheduleJsonString)
-
-                // 遍历每个公共作息模板，用 savePresetTimeSlots 拿到的基础时间骨架对其进行自动合并与对齐
-                val alignedPublicSchedules = rawComboSchedule.publicSchedules.map { template ->
-                    val alignedSlots = mergeAndAlignTimeSlots(
-                        baseTimeSlots = baseSlots,
-                        draftTimeSlots = template.timeSlots
-                    )
-                    template.copy(timeSlots = alignedSlots)
-                }
-
-                val finalComboSchedule = rawComboSchedule.copy(publicSchedules = alignedPublicSchedules)
-                courseConversionRepository.importComboSchedule(tableId, finalComboSchedule)
+                courseConversionRepository.importComboSchedule(tableId, parse(baseSlots))
             }
 
             coroutineScope.launch(Dispatchers.Main) {
@@ -445,12 +463,69 @@ class WebBridgeHandler(
      * 通知 Web 任务执行完成，清理上下文状态。
      */
     fun notifyTaskCompletion() {
-        if (trackedCourseImport) _importProgress.update { it.complete() }
+        if (trackedCourseImport) {
+            val batch = pending ?: return
+            val tableId = importTableId ?: return
+            committing = true
+            pending = null
+            importActive = false
+            _importProgress.update { it.copy(message = "正在保存课表…") }
+            coroutineScope.launch {
+                try {
+                    val config = confirmSemesterConfig(tableId, batch)
+                    if (config == null) {
+                        _importProgress.update { it.copy(running = false, message = "已取消同步") }
+                        return@launch
+                    }
+                    batch.config = config
+                    val count = courseConversionRepository.saveScriptImport(tableId, batch)
+                    _importProgress.update { it.copy(savedCount = count).complete() }
+                    onTaskCompleted()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    importFailed(error.message ?: "课表保存失败")
+                } finally {
+                    committing = false
+                    importTableId = null
+                }
+            }
+            return
+        }
         importTableId = null
         importActive = false
         isComboScheduleImported = false
         latestPresetTimeSlots = null // 任务结束清理内存
-        if (!trackedCourseImport || _importProgress.value.completed) onTaskCompleted()
+        onTaskCompleted()
+    }
+
+    private suspend fun confirmSemesterConfig(tableId: String, batch: ScriptCourseImport): ScriptCourseConfig? {
+        val fromScript = batch.config
+        if (fromScript.semesterStartDate != null && fromScript.semesterTotalWeeks != null) return fromScript
+        val selection = _importProgress.value.selection
+        val saved = courseConversionRepository.existingSemesterDates(tableId, selection)
+        val lastWeek = requireNotNull(batch.courses?.maxOfOrNull { it.weeks.maxOrNull() ?: 1 }) { "未收到课程" }
+        val merged = fromScript.withSavedDates(saved, lastWeek)
+        if (merged.semesterStartDate != null && merged.semesterTotalWeeks != null) return merged
+
+        val answer = CompletableDeferred<Pair<String, Int>?>()
+        uiEventChannel.send(WebUiEvent.ConfirmSemesterDates(selection.orEmpty(), merged.semesterStartDate, merged.semesterTotalWeeks, lastWeek) { answer.complete(it) })
+        val confirmed = answer.await() ?: return null
+        return fromScript.copy(semesterStartDate = confirmed.first, semesterTotalWeeks = confirmed.second)
+    }
+
+    /** Tracked adapters acknowledge each part in memory and commit only on notifyTaskCompletion. */
+    private inline fun stage(callbackId: String?, accept: (ScriptCourseImport) -> Unit): Boolean {
+        val batch = pending ?: return false
+        try {
+            accept(batch)
+            if (callbackId != null) resolveJsPromise(callbackId, "true")
+        } catch (error: Exception) {
+            val reason = error.message ?: "课表数据格式错误"
+            importFailed(reason)
+            if (callbackId != null) rejectJsPromise(callbackId, reason)
+        }
+        return true
     }
 
     /**

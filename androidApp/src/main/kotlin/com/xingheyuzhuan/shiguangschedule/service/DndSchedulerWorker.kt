@@ -15,13 +15,12 @@ import androidx.work.NetworkType
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.core.content.getSystemService
+import com.xingheyuzhuan.shiguangschedule.data.db.widget.alarmDateTimeOrNull
 import com.xingheyuzhuan.shiguangschedule.data.repository.AppSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.WidgetRepository
 import kotlinx.coroutines.flow.first
 import org.koin.android.annotation.KoinWorker
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -108,9 +107,8 @@ class DndSchedulerWorker(
         var nextEndAlarm: LocalDateTime? = null
 
         for (course in courses) {
-            val courseDate = LocalDate.parse(course.date, DATE_FORMATTER)
-            val startDateTime = courseDate.atTime(LocalTime.parse(course.startTime))
-            val endDateTime = courseDate.atTime(LocalTime.parse(course.endTime))
+            val startDateTime = course.alarmDateTimeOrNull(course.startTime) ?: continue
+            val endDateTime = course.alarmDateTimeOrNull(course.endTime) ?: continue
 
             if (startDateTime.isAfter(now)) {
                 if (nextStartAlarm == null || startDateTime.isBefore(nextStartAlarm)) nextStartAlarm = startDateTime
@@ -127,11 +125,10 @@ class DndSchedulerWorker(
         val todayStr = now.toLocalDate().format(DATE_FORMATTER)
         val courses = widgetRepository.getWidgetCoursesByDateRange(todayStr, todayStr).first()
             .filter { !it.isSkipped }
-        val nowTime = now.toLocalTime()
         for (course in courses) {
-            val startTime = LocalTime.parse(course.startTime)
-            val endTime = LocalTime.parse(course.endTime)
-            if (!nowTime.isBefore(startTime) && nowTime.isBefore(endTime)) return true
+            val startTime = course.alarmDateTimeOrNull(course.startTime) ?: continue
+            val endTime = course.alarmDateTimeOrNull(course.endTime) ?: continue
+            if (!now.isBefore(startTime) && now.isBefore(endTime)) return true
         }
         return false
     }

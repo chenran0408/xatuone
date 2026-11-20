@@ -42,6 +42,10 @@ fun WebDialogHost(
     }
 
     when (val event = currentEvent) {
+        is WebUiEvent.ConfirmSemesterDates -> ConfirmSemesterDatesDialog(event) {
+            event.onResult(it)
+            currentEvent = null
+        }
         is WebUiEvent.ShowAlert -> {
             AlertHost(event.data, onConfirm = {
                 event.callback(true)

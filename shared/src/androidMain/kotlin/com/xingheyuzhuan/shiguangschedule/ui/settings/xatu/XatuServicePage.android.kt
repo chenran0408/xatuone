@@ -282,7 +282,7 @@ actual fun XatuServicePage(
                     }
                 )
                 "electricity" -> ElectricityBalanceContent(snapshot) { onOpen(it, "校园缴费平台") }
-                "electricitySettings" -> ElectricitySettingsContent(snapshot, campus, campusService) { onOpen(it, "校园缴费平台") }
+                "electricitySettings" -> ElectricitySettingsContent(snapshot, campus, campusService)
                 "checkinLocation" -> CheckinLocationContent(snapshot, campus)
                 else -> UiActionButton(onClick = { onOpen("https://ehall.xatu.edu.cn/", "一站式服务") }, text = "打开一站式服务")
             }

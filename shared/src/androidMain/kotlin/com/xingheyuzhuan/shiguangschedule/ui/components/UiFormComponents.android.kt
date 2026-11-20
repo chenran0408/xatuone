@@ -87,7 +87,10 @@ actual fun UiSettingRow(title: String, summary: String, modifier: Modifier, onCl
             modifier = modifier, onClick = onClick, icon = leadingContent,
             title = { com.itos.coui.text.Text(text = title, kind = com.itos.coui.text.CouiTextKind.PreferenceTitle,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Start) },
-            summary = if (summary.isEmpty()) null else ({ com.itos.coui.text.Text(text = summary, kind = com.itos.coui.text.CouiTextKind.PreferenceSummary) }),
+            summary = if (summary.isEmpty()) null else ({
+                com.itos.coui.text.Text(text = summary, kind = com.itos.coui.text.CouiTextKind.PreferenceSummary,
+                    color = com.itos.coui.layout.CouiPageDefaults.themeColors().summary)
+            }),
             trailing = { trailingContent?.invoke() },
         )
     }

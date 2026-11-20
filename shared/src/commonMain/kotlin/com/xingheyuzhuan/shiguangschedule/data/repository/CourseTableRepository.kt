@@ -141,12 +141,7 @@ class CourseTableRepository(
      * @return 如果删除成功返回 true，否则返回 false。
      */
     suspend fun deleteCourseTable(courseTable: CourseTable): Boolean {
-        val allTables = courseTableDao.getAllCourseTables().first()
-        if (allTables.size <= 1) {
-            return false
-        }
-        courseTableDao.delete(courseTable)
-        return true
+        return courseTableDao.deleteWithExclusiveSchedule(courseTable.id)
     }
 
     /**

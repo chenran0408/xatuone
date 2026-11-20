@@ -144,6 +144,9 @@
     <!-- 通知设置 -->
     <string name="title_course_notification_settings">课程提醒设置</string>
     <string name="section_title_general">常规</string>
+    <string name="section_reminder_options">提醒方式</string>
+    <string name="section_reminder_permissions">系统权限</string>
+    <string name="item_notification_permission">通知权限</string>
     <string name="section_title_advanced">高级</string>
     <string name="item_course_reminder">课程提醒</string>
     <string name="item_remind_time_before">提前提醒时间</string>

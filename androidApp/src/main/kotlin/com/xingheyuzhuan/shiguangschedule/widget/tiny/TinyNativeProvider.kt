@@ -19,11 +19,11 @@ class TinyNativeProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        WorkManagerHelper.schedulePeriodicWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        WorkManagerHelper.cancelAllWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 }

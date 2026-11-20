@@ -19,13 +19,6 @@ fun getTodayLocalDate(): LocalDate {
 }
 
 /**
- * 获取当前系统时区的当前时间
- */
-fun getCurrentLocalTime(): LocalTime {
-    return Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time
-}
-
-/**
  * 计算当前日期所在周的起始日期（周一/周日等）
  */
 fun LocalDate.startOfWeek(firstDayOfWeek: DayOfWeek = DayOfWeek.MONDAY): LocalDate {
@@ -47,9 +40,8 @@ fun LocalTime.formatToHHmm(): String {
 /**
  * 根据当前系统时间与 TimeSlots 匹配计算当前属于第几节课
  */
-fun calculateCurrentSectionIndex(timeSlots: List<TimeSlot>): Int {
+fun calculateCurrentSectionIndex(timeSlots: List<TimeSlot>, now: LocalTime): Int {
     if (timeSlots.isEmpty()) return -1
-    val now = getCurrentLocalTime()
     val currentMinutes = now.hour * 60 + now.minute
 
     timeSlots.forEachIndexed { index, slot ->

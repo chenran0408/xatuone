@@ -15,8 +15,9 @@ import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeTableDao
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -41,28 +42,22 @@ class TimeScheduleRepository(
     /**
      * 实时观察指定课表在特定日期的生效节次列表
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeEffectiveTimeSlots(
         courseTableId: String,
         targetDate: LocalDate = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-    ): Flow<List<TimeSlot>> {
-        val exclusiveSlotsFlow = timeSlotDao.getTimeSlotsByTimeTableId(courseTableId)
+    ): Flow<List<TimeSlot>> = observeEffectiveTimeSlots(courseTableId, listOf(targetDate)).map { it.getValue(targetDate) }
 
-        return courseTimeBindingDao.observeBindingByCourseTableId(courseTableId).flatMapLatest { binding ->
-            if (binding == null) {
-                exclusiveSlotsFlow
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeEffectiveTimeSlots(courseTableId: String, dates: List<LocalDate>): Flow<Map<LocalDate, List<TimeSlot>>> =
+        courseTimeBindingDao.observeBindingByCourseTableId(courseTableId).flatMapLatest { binding ->
+            if (binding?.targetType == TargetType.COMBO) {
+                observeComboEffectiveTimeSlots(binding.targetId, courseTableId, dates)
             } else {
-                when (binding.targetType) {
-                    TargetType.SINGLE -> timeSlotDao.getTimeSlotsByTimeTableId(binding.targetId)
-                    TargetType.COMBO -> observeComboEffectiveTimeSlots(
-                        comboId = binding.targetId,
-                        targetDate = targetDate,
-                        exclusiveSlotsFlow = exclusiveSlotsFlow
-                    )
+                timeSlotDao.getTimeSlotsByTimeTableId(binding?.targetId ?: courseTableId).map { slots ->
+                    dates.associateWith { slots }
                 }
             }
         }
-    }
 
     /**
      * 单次获取指定课表在特定日期的生效节次列表
@@ -99,13 +94,20 @@ class TimeScheduleRepository(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun getTimeScheduleFlowByTableId(tableId: String): Flow<Unit> {
-        return courseTimeBindingDao.observeBindingByCourseTableId(tableId).flatMapLatest { binding ->
+        return courseTimeBindingDao.observeBindingByCourseTableId(tableId).distinctUntilChanged().flatMapLatest { binding ->
             if (binding?.targetType == TargetType.COMBO) {
-                timeTableComboDao.getRulesByComboId(binding.targetId).flatMapLatest { flowOf(Unit) }
+                combine(
+                    timeTableComboDao.getComboByIdFlow(binding.targetId).distinctUntilChanged(),
+                    timeTableComboDao.getRulesByComboId(binding.targetId).distinctUntilChanged()
+                ) { combo, rules ->
+                    rules.map { it.targetTimeTableId } + (combo?.baseTimeTableId ?: tableId)
+                }.flatMapLatest { sourceIds ->
+                    timeSlotDao.observeSlotsForTimeTables(sourceIds.distinct()).distinctUntilChanged()
+                }
             } else {
-                flowOf(Unit)
+                timeSlotDao.getTimeSlotsByTimeTableId(binding?.targetId ?: tableId).distinctUntilChanged()
             }
-        }
+        }.map { Unit }
     }
 
     /**
@@ -114,34 +116,24 @@ class TimeScheduleRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeComboEffectiveTimeSlots(
         comboId: String,
-        targetDate: LocalDate,
-        exclusiveSlotsFlow: Flow<List<TimeSlot>>
-    ): Flow<List<TimeSlot>> {
+        courseTableId: String,
+        dates: List<LocalDate>
+    ): Flow<Map<LocalDate, List<TimeSlot>>> {
         return combine(
             timeTableComboDao.getComboByIdFlow(comboId),
             timeTableComboDao.getRulesByComboId(comboId)
         ) { combo, rules ->
-            val matchedTargetId = matchComboTargetTableId(rules, targetDate)
-            Triple(combo?.baseTimeTableId, matchedTargetId, combo)
-        }.flatMapLatest { (baseTableId, matchedTargetId, _) ->
-            val comboBaseSlotsFlow = if (baseTableId != null) {
-                timeSlotDao.getTimeSlotsByTimeTableId(baseTableId)
-            } else {
-                exclusiveSlotsFlow
-            }
-
-            when {
-                matchedTargetId == null || matchedTargetId == baseTableId -> comboBaseSlotsFlow
-                else -> combine(
-                    comboBaseSlotsFlow,
-                    timeSlotDao.getTimeSlotsByTimeTableId(matchedTargetId)
-                ) { comboBaseSlots, targetSlots ->
-                    alignTimeSlots(
-                        baseSlots = comboBaseSlots,
-                        targetSlots = targetSlots,
-                        targetTableId = matchedTargetId
-                    )
+            val baseId = combo?.baseTimeTableId ?: courseTableId
+            baseId to dates.associateWith { matchComboTargetTableId(rules, it) ?: baseId }
+        }.distinctUntilChanged().flatMapLatest { (baseId, idsByDate) ->
+            val tableIds = (idsByDate.values + baseId).distinct()
+            timeSlotDao.observeSlotsForTimeTables(tableIds).map { slots ->
+                val slotsById = slots.groupBy { it.timeTableId }
+                val base = slotsById[baseId].orEmpty()
+                val aligned = tableIds.associateWith { id ->
+                    if (id == baseId) base else alignTimeSlots(base, slotsById[id].orEmpty(), id)
                 }
+                idsByDate.mapValues { aligned.getValue(it.value) }
             }
         }
     }

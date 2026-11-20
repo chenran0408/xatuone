@@ -49,7 +49,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -61,7 +60,6 @@ import androidx.compose.ui.unit.sp
 import com.xingheyuzhuan.shiguangschedule.Destination
 import com.xingheyuzhuan.shiguangschedule.data.model.ScheduleGridStyle
 import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
-import com.xingheyuzhuan.shiguangschedule.ui.components.uiScheduleCourseShape
 import com.xingheyuzhuan.shiguangschedule.ui.theme.LocalIsDarkTheme
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.plus
@@ -71,6 +69,8 @@ import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseWithWeeks
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseWeek
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.MergedCourseBlock
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.CourseDetailBottomSheet
+import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.courseSurfaceColor
+import com.xingheyuzhuan.shiguangschedule.ui.schedule.components.courseTextOn
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.displayedCourseName
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -95,15 +95,12 @@ import shiguangschedule.shared.generated.resources.week_days_full_names
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
 
-private const val DEFAULT_TIME_ZERO = "00:00"
 private const val EMPTY_TIME_PLACEHOLDER = "--:--"
 
-internal fun isCourseFinishedAt(endTime: String?, currentTime: LocalTime): Boolean =
-    try {
-        LocalTime.parse(endTime ?: DEFAULT_TIME_ZERO) < currentTime
-    } catch (e: Exception) {
-        false
-    }
+internal fun isCourseFinishedAt(endTime: String?, currentTime: LocalTime): Boolean {
+    val end = endTime?.let { LocalTime.Formats.ISO.parseOrNull(it) } ?: return false
+    return end < currentTime
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,18 +182,23 @@ fun TodayContent(
     ) {
         item {
             val weekdays = stringArrayResource(Res.array.week_days_full_names)
-            UiText("${state.today} ${weekdays[state.today.dayOfWeek.isoDayNumber - 1]}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            UiText(subtitle, style = MaterialTheme.typography.bodySmall, color = uiStyleColors().secondaryText)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 UiCourseIconButton(vectorResource(Res.drawable.arrow_back_24px), "前一天", tint = uiStyleColors().accent) {
                     onSelectDate(state.today.plus(-1, DateTimeUnit.DAY))
                 }
-                UiActionButton({ showDatePicker = true }, Modifier.weight(1f), text = "选日期")
+                UiButton(
+                    text = "${state.today}  ${weekdays[state.today.dayOfWeek.isoDayNumber - 1]} ▾",
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.weight(1f),
+                )
                 UiCourseIconButton(vectorResource(Res.drawable.arrow_forward_24px), "后一天", tint = uiStyleColors().accent) {
                     onSelectDate(state.today.plus(1, DateTimeUnit.DAY))
                 }
             }
-            if (state.today != actualToday) UiButton("回到今天", { onSelectDate(null) })
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                UiText(subtitle, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = uiStyleColors().secondaryText)
+                if (state.today != actualToday) UiButton("回到今天", { onSelectDate(null) })
+            }
         }
         if (state.status == TodayStatus.NoSemesterConfig) item {
             UiButton("设置开学日期", { onNavigate(Destination.CourseStartDateSettings) })
@@ -257,15 +259,13 @@ fun CourseTimelineItem(
     val indication = if (style == UiStyle.MATERIAL) LocalIndication.current else null
     val finishedLabel = stringResource(Res.string.course_status_finished)
     val colors = uiStyleColors()
-    val containerColor = when {
-        style == UiStyle.MIUIX -> colors.surface
-        style == UiStyle.COUI -> lerp(
-            colors.surface.compositeOver(colors.background), themeColor,
-            if (isFinished) .22f else if (isDark) .62f else .40f,
-        )
-        isFinished -> themeColor.copy(alpha = themeColor.alpha * .6f)
-        else -> themeColor
-    }
+    val surface = colors.surface.compositeOver(colors.background)
+    val containerColor = if (style == UiStyle.MIUIX) surface else
+        courseSurfaceColor(style, themeColor, surface, isDark).let {
+            if (isFinished) it.copy(alpha = .65f).compositeOver(surface) else it
+        }
+    val cardText = courseTextOn(containerColor, colors.onSurface)
+    val cardSecondary = courseTextOn(containerColor, colors.secondaryText)
 
     Row(
         modifier = Modifier
@@ -307,7 +307,7 @@ fun CourseTimelineItem(
                     role = Role.Button,
                     onClick = onClick,
                 ),
-                shape = if (style == UiStyle.COUI) uiScheduleCourseShape(16.dp) else MaterialTheme.shapes.medium,
+                cornerRadius = if (style == UiStyle.MATERIAL) 12.dp else 16.dp,
                 containerColor = containerColor,
                 raised = false,
                 pressed = pressed,
@@ -319,7 +319,7 @@ fun CourseTimelineItem(
                             textDecoration = if (isFinished) TextDecoration.LineThrough else null
                         ),
                         fontWeight = FontWeight.Bold,
-                        color = uiStyleColors().onSurface,
+                        color = cardText,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -333,7 +333,7 @@ fun CourseTimelineItem(
                             UiText(
                                 "${model.startTime ?: EMPTY_TIME_PLACEHOLDER}–${model.endTime ?: EMPTY_TIME_PLACEHOLDER}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = uiStyleColors().secondaryText,
+                                color = cardSecondary,
                             )
                         }
                     }
@@ -342,7 +342,7 @@ fun CourseTimelineItem(
                         UiText(
                             text = stringResource(Res.string.course_position_prefix, model.course.position),
                             style = MaterialTheme.typography.bodySmall,
-                            color = uiStyleColors().secondaryText,
+                            color = cardSecondary,
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
@@ -351,7 +351,7 @@ fun CourseTimelineItem(
                         UiText(
                             text = stringResource(Res.string.course_teacher_prefix, model.course.teacher),
                             style = MaterialTheme.typography.bodySmall,
-                            color = uiStyleColors().secondaryText
+                            color = cardSecondary
                         )
                     }
 
@@ -366,7 +366,7 @@ fun CourseTimelineItem(
                         UiText(
                             text = "$creditLabel: $creditValStr",
                             style = MaterialTheme.typography.bodySmall,
-                            color = uiStyleColors().secondaryText
+                            color = cardSecondary
                         )
                     }
                 }

@@ -32,6 +32,9 @@ interface TimeSlotDao {
     @Query("SELECT * FROM time_slots WHERE timeTableId = :timeTableId ORDER BY number ASC")
     fun getTimeSlotsByTimeTableId(timeTableId: String): Flow<List<TimeSlot>>
 
+    @Query("SELECT * FROM time_slots WHERE timeTableId IN (:ids) ORDER BY timeTableId, number")
+    fun observeSlotsForTimeTables(ids: List<String>): Flow<List<TimeSlot>>
+
     /**
      * 一次性（suspend）查询指定作息表的所有时间段，按节次编号升序排列。
      */

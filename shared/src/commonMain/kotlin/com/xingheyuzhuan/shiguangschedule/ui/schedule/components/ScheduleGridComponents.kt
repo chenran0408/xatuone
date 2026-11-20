@@ -55,13 +55,12 @@ import androidx.compose.ui.unit.sp
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseWithWeeks
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.MergedCourseBlock
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.date_format_month_day
+import shiguangschedule.shared.generated.resources.schedule_header_month
 import shiguangschedule.shared.generated.resources.widget_title_today
-import kotlin.time.Clock
+import kotlin.math.roundToInt
 
 /**
  * 课表项统一调度接口
@@ -99,7 +98,9 @@ data class ScheduleGridViewState(
     val showWeekends: Boolean,
     val todayIndex: Int,
     val firstDayOfWeek: Int,
-    val currentSectionIndex: Int = -1
+    val currentSectionIndex: Int = -1,
+    val currentHour: Int = -1,
+    val dayTimeSlots: Map<Int, List<TimeSlot>> = emptyMap()
 )
 
 /**
@@ -201,12 +202,14 @@ fun DayHeader(
         val cellWidth = (maxWidth - style.timeColumnWidth) / displayDays.size.coerceAtLeast(1)
         val markerPadding = if (isMiuix && todayIndex in displayDays.indices) 8.dp else 0.dp
         val available = cellWidth - horizontalInset * 2
-        val compactDates = shouldShowDate && available < dateWidth + markerPadding + 8.dp
+        val monthOnRail = shouldShowDate && (isMiuix || isCoui) && dates.isNotEmpty()
+        val compactDates = shouldShowDate && (monthOnRail || available < dateWidth + markerPadding + 8.dp)
         val todayStartsMonth = todayIndex == 0 ||
             dates.getOrNull(todayIndex)?.take(2) != dates.getOrNull(todayIndex - 1)?.take(2)
         val monthDatePadding = if (todayStartsMonth) markerPadding else 0.dp
         val visibleCount = minOf(dates.size, displayDays.size)
-        val showDateRange = visibleCount > 0 && compactDates && available < dateWidth + monthDatePadding
+        val monthChanges = visibleCount > 0 && dates.first().take(2) != dates[visibleCount - 1].take(2)
+        val showDateRange = visibleCount > 0 && compactDates && (!monthOnRail || monthChanges) && available < dateWidth + monthDatePadding
         val rangeHeight = if (showDateRange) with(density) { 16.sp.toDp() } else 0.dp
         if (showDateRange) {
             UiText(
@@ -243,10 +246,12 @@ fun DayHeader(
                         style = TextStyle.Default
                     )
 
-                    if (!currentWeek.isNullOrEmpty()) {
+                    val railLabel = if (monthOnRail) stringResource(Res.string.schedule_header_month, dates.first().take(2).toInt())
+                        else currentWeek
+                    if (!railLabel.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(1.dp))
                         UiText(
-                            text = currentWeek,
+                            text = railLabel,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Normal,
                             color = subTextColor,
@@ -265,9 +270,8 @@ fun DayHeader(
                     .drawBehind {
                         if (!style.hideGridLines) {
                             if (!isMiuix && !isCoui) {
-                                val cellWidth = size.width / displayDaysCount
                                 for (i in 1..displayDaysCount) {
-                                    val x = i * cellWidth
+                                    val x = scheduleColumnEdge(size.width.roundToInt(), displayDaysCount, i).toFloat()
                                     drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = strokeWidthPx)
                                 }
                             }
@@ -303,7 +307,7 @@ fun DayHeader(
 
                             if (date != null) {
                                 // The live grid uses MM-DD and the appearance preview uses MM/DD.
-                                val showMonth = index == 0 || date.take(2) != dates[index - 1].take(2)
+                                val showMonth = if (index == 0) !monthOnRail else date.take(2) != dates[index - 1].take(2)
                                 val dateText = if (compactDates && (!showMonth || showDateRange)) date.takeLast(2) else date
                                 Spacer(modifier = Modifier.height(2.dp))
                                 val dateLabel: @Composable () -> Unit = {
@@ -375,6 +379,7 @@ fun TimeColumn(
     modifier: Modifier,
     lineColor: Color,
     currentSectionIndex: Int = -1,
+    currentHour: Int = -1,
     textColor: Color,
     subTextColor: Color,
     strokeWidthPx: Float,
@@ -382,18 +387,10 @@ fun TimeColumn(
     activeDragMinuteStr: String? = null
 ) {
     val currentSectionTextColor = scheduleMarkerTextColor()
-    val currentHour = remember {
-        try {
-            Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).hour
-        } catch (e: Exception) {
-            -1
-        }
-    }
-
     Column(modifier.width(style.timeColumnWidth).background(scheduleRailColor())) {
         for (index in 0 until maxGridSections) {
             val isCurrentHourActive = if (is24HourMode) {
-                currentHour == index && currentSectionIndex != -1
+                currentHour == index
             } else {
                 index + 1 == currentSectionIndex
             }
@@ -460,7 +457,6 @@ fun TimeColumn(
                     .fillMaxWidth()
                     .height(style.sectionHeight)
                     .clickable { onTimeSlotClicked() }
-                    .background(if (isCurrentHourActive) uiStyleColors().accent.copy(alpha = 0.1f) else Color.Transparent)
                     .drawBehind {
                         if (!style.hideGridLines) {
                             drawLine(lineColor, Offset(size.width, 0f), Offset(size.width, size.height), strokeWidthPx)
@@ -543,7 +539,7 @@ private fun EditHandleDot() {
     Box(
         modifier = Modifier
             .size(12.dp)
-            .background(Color(0xFF2196F3), CircleShape)
+            .background(uiStyleColors().accent, CircleShape)
     )
 }
 
@@ -557,12 +553,11 @@ fun TimeText(text: String, color: Color) {
  */
 fun calculateSingleSchedulables(
     mergedCourses: List<MergedCourseBlock>,
-    firstDayOfWeek: Int,
-    showWeekends: Boolean
+    visibleDays: List<Int>
 ): List<ISingleSchedulable> {
     val list = mutableListOf<ISingleSchedulable>()
     mergedCourses.forEach { block ->
-        val displayIdx = mapDayToDisplayIndex(block.day, firstDayOfWeek, showWeekends)
+        val displayIdx = visibleDays.indexOf(block.day)
         if (displayIdx != -1) {
             val layoutInfo = block.nonActiveRanges.firstOrNull() ?: (0f to 1f)
             block.courses.firstOrNull()?.let { course ->
@@ -581,14 +576,5 @@ fun calculateSingleSchedulables(
     return list
 }
 
-fun rearrangeDays(originalDays: List<String>, firstDayOfWeek: Int): List<String> {
-    val startIndex = (firstDayOfWeek - 1).coerceIn(0, 6)
-    return originalDays.subList(startIndex, originalDays.size) + originalDays.subList(0, startIndex)
-}
-
-fun mapDayToDisplayIndex(courseDay: Int, firstDayOfWeek: Int, showWeekends: Boolean): Int {
-    val idx = (courseDay - firstDayOfWeek + 7) % 7
-    return if (idx >= if (showWeekends) 7 else 5) -1 else idx
-}
-
-fun mapDisplayIndexToDay(idx: Int, firstDayOfWeek: Int): Int = (firstDayOfWeek - 1 + idx) % 7 + 1
+internal fun visibleWeekdays(firstDayOfWeek: Int, showWeekends: Boolean): List<Int> =
+    (0..6).map { (firstDayOfWeek - 1 + it) % 7 + 1 }.filter { showWeekends || it <= 5 }

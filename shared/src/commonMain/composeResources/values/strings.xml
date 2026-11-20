@@ -144,6 +144,9 @@
     <!-- 通知设置 -->
     <string name="title_course_notification_settings">课程提醒设置</string>
     <string name="section_title_general">常规</string>
+    <string name="section_reminder_options">提醒方式</string>
+    <string name="section_reminder_permissions">系统权限</string>
+    <string name="item_notification_permission">通知权限</string>
     <string name="section_title_advanced">高级</string>
     <string name="item_course_reminder">课程提醒</string>
     <string name="item_remind_time_before">提前提醒时间</string>
@@ -389,6 +392,7 @@
     <string name="tweak_mode_overwrite">覆盖 (A → B)</string>
     <string name="tweak_mode_exchange">交换 (A ↔ B)</string>
     <string name="date_format_month_day">%1$d月%2$d日</string>
+    <string name="schedule_header_month">%1$d月</string>
     <string name="dialog_title_select_workday">选择调至补班日</string>
 
     <!-- 教务导入 -->

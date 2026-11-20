@@ -1,13 +1,13 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.xatu
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiCard
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccount
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.chevron_right_24px
@@ -48,7 +50,8 @@ internal fun AccountPanel(
         confirmAction = com.itos.coui.dialog.CouiDialogAction("确定", { onAccountChange(couiDraft.text); couiEdit = false }),
         dismissAction = com.itos.coui.dialog.CouiDialogAction("取消", { couiEdit = false }))
     UiCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val coui = LocalUiStyle.current == UiStyle.COUI
+        Column(Modifier.fillMaxWidth().padding(if (coui) 0.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(if (coui) 0.dp else 10.dp)) {
             if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MATERIAL) {
                 ListItem(
                     overlineContent = { Text("教务账号") },
@@ -58,14 +61,20 @@ internal fun AccountPanel(
                     colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent))
             } else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) {
                 top.yukonga.miuix.kmp.basic.BasicComponent(
-                    startAction = { Icon(vectorResource(Res.drawable.person_24px), null, Modifier.size(32.dp)) },
+                    startAction = {
+                        Box(Modifier.size(44.dp).background(MiuixTheme.colorScheme.primaryContainer, CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            top.yukonga.miuix.kmp.basic.Icon(vectorResource(Res.drawable.person_24px), null, tint = MiuixTheme.colorScheme.onPrimaryContainer)
+                        }
+                    },
                     insideMargin = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
                 ) {
-                    top.yukonga.miuix.kmp.basic.Text("教务账号", style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body2)
+                    top.yukonga.miuix.kmp.basic.Text("教务账号", style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     top.yukonga.miuix.kmp.basic.Text(savedAccount.studentNumber.ifBlank { "未设置" },
                         style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.title2)
                     top.yukonga.miuix.kmp.basic.Text(if (savedAccount.loggedIn) "已登录" else "未登录",
-                        style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body1)
+                        style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
             } else com.itos.coui.layout.Item(
                 icon = { Icon(vectorResource(Res.drawable.person_24px), null) },
@@ -100,7 +109,10 @@ internal fun AccountPanel(
                     label = "学号",
                     singleLine = true
                 )
-                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = if (coui) Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp) else Modifier,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MATERIAL) {
                         Button(onClick = onLogin, enabled = account.isNotBlank() && !actionInProgress) {
                             if (actionInProgress) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -121,7 +133,8 @@ internal fun AccountPanel(
                 } else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) {
                     top.yukonga.miuix.kmp.basic.TextButton(if (actionInProgress) "正在准备…" else "重新登录", onLogin,
                         enabled = !actionInProgress,
-                        colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary())
+                        colors = if (savedAccount.loggedIn) top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColors()
+                            else top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary())
                 } else {
                     com.itos.coui.layout.Item(
                         onClick = onLogin,
@@ -142,6 +155,7 @@ internal fun AccountPanel(
             if (status.isNotBlank()) {
                 UiText(
                     status,
+                    modifier = if (coui) Modifier.padding(horizontal = 16.dp, vertical = 8.dp) else Modifier,
                     style = MaterialTheme.typography.bodySmall,
                     color = if ("失败" in status) MaterialTheme.colorScheme.error else uiStyleColors().secondaryText
                 )

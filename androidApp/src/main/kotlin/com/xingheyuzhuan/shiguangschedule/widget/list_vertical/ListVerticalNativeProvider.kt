@@ -29,8 +29,7 @@ class ListVerticalNativeProvider : AppWidgetProvider() {
      */
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        // 确保后台任务正在运行
-        WorkManagerHelper.schedulePeriodicWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 
     /**
@@ -38,6 +37,6 @@ class ListVerticalNativeProvider : AppWidgetProvider() {
      */
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        WorkManagerHelper.cancelAllWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 }

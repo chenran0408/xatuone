@@ -46,6 +46,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -121,6 +124,7 @@ fun WebViewScreen(
     xatuLogin: Boolean = false,
     serviceTitle: String? = null,
     onLoginComplete: () -> Unit = onBack,
+    confirmServiceSession: (suspend (String) -> Boolean)? = null,
     viewModel: WebViewModel = koinViewModel()
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -155,6 +159,7 @@ fun WebViewScreen(
     var loginReady by remember { mutableStateOf(false) }
     var entryHistoryReady by remember(embeddedTitle) { mutableStateOf(embeddedTitle == null) }
     var loginFailure by remember { mutableStateOf<String?>(null) }
+    var serviceDocument by remember { mutableStateOf<String?>(null) }
     var sessionActionInProgress by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var showSyncContext by remember { mutableStateOf(true) }
@@ -184,6 +189,20 @@ fun WebViewScreen(
     LaunchedEffect(loginReady) {
         if (loginReady) completeLogin()
     }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(serviceDocument, lifecycle) {
+        val document = serviceDocument ?: return@LaunchedEffect
+        val confirm = confirmServiceSession ?: return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                if (confirm(document)) onLoginComplete()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                loginFailure = "登录确认失败：${error.message ?: "请重试"}"
+            }
+        }
+    }
     val uiEventChannel = remember { Channel<WebUiEvent>(Channel.UNLIMITED) }
     val uiEventsFlow = remember(uiEventChannel) { uiEventChannel.receiveAsFlow() }
 
@@ -208,7 +227,7 @@ fun WebViewScreen(
             inputUrl = if (rawUrl.isBlank() || rawUrl == "about:blank") "" else rawUrl
             keyboardController?.hide()
         } else {
-            if (!xatuLogin && entryHistoryReady && webViewController.canGoBack()) {
+            if (!xatuLogin && confirmServiceSession == null && entryHistoryReady && webViewController.canGoBack()) {
                 webViewController.goBack()
             } else {
                 onBack()
@@ -248,6 +267,8 @@ fun WebViewScreen(
                         inToolbar = true,
                         onClick = {
                             loadError = null
+                            loginFailure = null
+                            serviceDocument = null
                             webViewController.reload()
                         },
                         enabled = !sessionActionInProgress,
@@ -432,11 +453,18 @@ fun WebViewScreen(
                 isDevToolsEnabled = isDevToolsEnabled,
                 controller = webViewController,
                 bridgeHandler = bridgeHandler,
-                onProgressChange = { loadingProgress = it },
+                onProgressChange = {
+                    loadingProgress = it
+                    if (confirmServiceSession != null && it < 1f) serviceDocument = null
+                },
                 onTitleChange = { pageTitle = it },
                 onLoadError = { loadError = it },
                 onPageFinished = { url ->
                     entryHistoryReady = true
+                    if (confirmServiceSession != null && loadError == null) {
+                        loginFailure = null
+                        serviceDocument = url
+                    }
                     if (xatuLogin && loadError == null) loginReady =
                         url.startsWith("http://jwgl2018.xatu.edu.cn/eams/") ||
                             url.startsWith("https://jwgl2018.xatu.edu.cn/eams/")

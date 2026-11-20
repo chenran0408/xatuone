@@ -34,6 +34,7 @@ import com.xingheyuzhuan.shiguangschedule.ui.components.UiFeedbackKind
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiSelectionCard
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiText
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.WebBridgeHandler
+import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.ConfirmSemesterDatesDialog
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.WebUiEvent
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.XatuCourseScriptRunner
 import com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web.trackedCourseImportScript
@@ -86,6 +87,7 @@ private fun CourseSync(target: CourseTable, onDismiss: () -> Unit, onLogin: (Des
     var runner by remember { mutableStateOf<XatuCourseScriptRunner?>(null) }
     var accountNumber by remember { mutableStateOf("") }
     var selection by remember { mutableStateOf<WebUiEvent.ShowSingleSelection?>(null) }
+    var semesterDates by remember { mutableStateOf<WebUiEvent.ConfirmSemesterDates?>(null) }
     var submitted by remember { mutableStateOf(false) }
     var loginRequired by remember { mutableStateOf(false) }
     var firstLogin by remember { mutableStateOf(false) }
@@ -101,6 +103,8 @@ private fun CourseSync(target: CourseTable, onDismiss: () -> Unit, onLogin: (Des
         for (event in events) {
             if (event is WebUiEvent.ShowSingleSelection && event.data.items.isNotEmpty()) {
                 selection = event
+            } else if (event is WebUiEvent.ConfirmSemesterDates) {
+                semesterDates = event
             } else {
                 bridge.importFailed("课表适配器未返回可选学期")
             }
@@ -150,7 +154,14 @@ private fun CourseSync(target: CourseTable, onDismiss: () -> Unit, onLogin: (Des
     val pending = selection?.takeIf { errorMessage == null && progress.error == null }
     val saving = submitted && progress.running && errorMessage == null
     val dismiss = { if (!submitted || !bridge.importProgress.value.running) onDismiss() }
-    if (pending != null) {
+    val dates = semesterDates
+    if (dates != null) {
+        ConfirmSemesterDatesDialog(dates) { result ->
+            semesterDates = null
+            dates.onResult(result)
+            if (result == null) onDismiss()
+        }
+    } else if (pending != null) {
         var selectedIndex by remember(pending) { mutableIntStateOf(pending.data.defaultSelectedIndex) }
         UiDialog(
             onDismissRequest = dismiss,

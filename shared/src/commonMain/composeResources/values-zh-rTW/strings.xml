@@ -134,6 +134,9 @@
     <string name="widget_course_total_count">共有 %1$d 節</string>
     <string name="title_course_notification_settings">課程提醒設定</string>
     <string name="section_title_general">一般</string>
+    <string name="section_reminder_options">提醒方式</string>
+    <string name="section_reminder_permissions">系統權限</string>
+    <string name="item_notification_permission">通知權限</string>
     <string name="section_title_advanced">進階</string>
     <string name="item_course_reminder">課程提醒</string>
     <string name="item_remind_time_before">提前提醒時間</string>

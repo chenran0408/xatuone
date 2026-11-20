@@ -10,6 +10,7 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCalendar
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuDormSelection
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,8 +75,7 @@ class XatuCampusRepositoryTest {
     private fun withRepository(block: suspend (XatuCampusRepository) -> Unit) = runBlocking {
         val parent = Paths.get("build", "tmp").toAbsolutePath()
         Files.createDirectories(parent)
-        val folder = Files.createTempDirectory(parent, "xatu-campus-")
-        val path = folder.resolve("campus.preferences_pb")
+        val path = parent.resolve("xatu-campus-${UUID.randomUUID()}.preferences_pb")
         val job = SupervisorJob()
         // Android FileStorage uses platform file operations unavailable to a host test.
         val store = PreferenceDataStoreFactory.create(
@@ -87,7 +87,6 @@ class XatuCampusRepositoryTest {
         } finally {
             job.cancelAndJoin()
             Files.deleteIfExists(path)
-            Files.delete(folder)
         }
     }
 }

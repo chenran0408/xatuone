@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiScaffold
 import com.xingheyuzhuan.shiguangschedule.ui.components.UiTopAppBar
+import com.xingheyuzhuan.shiguangschedule.ui.components.LocalUiStyle
+import com.xingheyuzhuan.shiguangschedule.ui.components.uiContentWidth
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import com.xingheyuzhuan.shiguangschedule.ui.components.uiStyleColors
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
@@ -37,10 +40,13 @@ fun NotificationSettingsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .uiContentWidth()
+                .padding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 16.dp)
+            contentPadding = PaddingValues(
+                horizontal = if (LocalUiStyle.current == UiStyle.MIUIX) 16.dp else 0.dp,
+                vertical = 8.dp,
+            )
         ) {
             // 常规卡片由于各平台差异巨大，采用 expect 隔离由各平台自行实现
             item {

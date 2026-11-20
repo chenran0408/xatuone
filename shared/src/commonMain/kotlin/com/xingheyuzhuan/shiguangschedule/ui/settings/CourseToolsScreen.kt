@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.dp
 import com.xingheyuzhuan.shiguangschedule.Destination
 import com.xingheyuzhuan.shiguangschedule.data.repository.CourseTableRepository
 import com.xingheyuzhuan.shiguangschedule.ui.components.*
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import shiguangschedule.shared.generated.resources.Res
 import shiguangschedule.shared.generated.resources.chevron_right_24px
+import shiguangschedule.shared.generated.resources.item_course_reminder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +40,7 @@ fun CourseToolsScreen(onNavigate: (Destination) -> Unit, onBack: () -> Unit) {
         "课表配置" to listOf(
             Triple("当前课表", current?.name ?: "尚未选择课表", Destination.ManageCourseTables),
             Triple("同步课程表", "", com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.xatuCourseImport),
+            Triple(stringResource(Res.string.item_course_reminder), "", Destination.NotificationSettings),
             Triple("日期与周次", "", Destination.CourseSettings),
             Triple("课程显示与颜色", "", Destination.StyleSettings),
             Triple("节次与作息", "", Destination.TimeScheduleManagement),

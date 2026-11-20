@@ -8,12 +8,11 @@ import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.xingheyuzhuan.shiguangschedule.data.db.widget.upcomingCourseReminders
 import com.xingheyuzhuan.shiguangschedule.data.repository.AppSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.WidgetRepository
 import kotlinx.coroutines.flow.first
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import org.koin.android.annotation.KoinWorker
@@ -56,27 +55,20 @@ class CourseNotificationWorker(
             val endDate = now.toLocalDate().plusDays(WIDGET_SYNC_DAYS).format(DateTimeFormatter.ISO_LOCAL_DATE)
 
             // 获取未来课程
-            val coursesToRemind = widgetRepository.getWidgetCoursesByDateRange(startDate, endDate).first()
-                .filter { !it.isSkipped }
+            val courses = widgetRepository.getWidgetCoursesByDateRange(startDate, endDate).first()
 
             val zoneId = ZoneId.systemDefault()
 
             // 按顺序为未来课程分配槽位并设置闹钟
-            coursesToRemind.take(ALARM_SLOT_COUNT).forEachIndexed { index, course ->
-                val courseDate = LocalDate.parse(course.date)
-                val startDT = LocalDateTime.of(courseDate, LocalTime.parse(course.startTime))
-                val remindTime = startDT.minusMinutes(remindBeforeMinutes.toLong())
-
-                if (remindTime.isAfter(now)) {
-                    setAlarmInternal(
-                        requestCode = ALARM_SLOT_START_ID + index,
-                        courseId = course.id,
-                        triggerTime = remindTime.atZone(zoneId).toInstant().toEpochMilli(),
-                        name = course.name,
-                        position = course.position,
-                        teacher = course.teacher
-                    )
-                }
+            upcomingCourseReminders(courses, now, remindBeforeMinutes, ALARM_SLOT_COUNT).forEachIndexed { index, (course, trigger) ->
+                setAlarmInternal(
+                    requestCode = ALARM_SLOT_START_ID + index,
+                    courseId = course.id,
+                    triggerTime = trigger.atZone(zoneId).toInstant().toEpochMilli(),
+                    name = course.name,
+                    position = course.position,
+                    teacher = course.teacher
+                )
             }
 
             Result.success()

@@ -36,8 +36,9 @@ import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.*
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBar as MiuixFloatingNavigationBar
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem as MiuixFloatingNavigationBarItem
+import top.yukonga.miuix.kmp.basic.FloatingToolbar as MiuixFloatingToolbar
+import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem as MiuixNavigationBarItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 private val LocalMaterialScroll = staticCompositionLocalOf<TopAppBarScrollBehavior?> { null }
@@ -109,7 +110,7 @@ actual fun UiTopAppBar(title: String, modifier: Modifier, onBack: (() -> Unit)?,
             color = if (containerColor == Color.Unspecified) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.background else containerColor,
             titleColor = if (titleColor == Color.Unspecified) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurface else titleColor)
         else top.yukonga.miuix.kmp.basic.SmallTopAppBar(title = title, modifier = modifier, navigationIcon = back, actions = miuixActions,
-            color = if (containerColor == Color.Unspecified) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface else containerColor,
+            color = if (containerColor == Color.Unspecified) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.background else containerColor,
             titleColor = if (titleColor == Color.Unspecified) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurface else titleColor)
         UiStyle.COUI -> if (expanded) com.itos.coui.topappbar.LargeTopAppBar(modifier = modifier, scrollBehavior = LocalCouiScroll.current,
             colors = com.itos.coui.topappbar.CouiTopAppBarDefaults.colors(backgroundColor = containerColor, titleColor = titleColor),
@@ -138,7 +139,7 @@ actual fun UiNavigationLayout(items: List<UiNavItem>, selectedIndex: Int, onSele
             translationY = size.height * fraction
             alpha = 1f - fraction
         }.windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = if (style == UiStyle.MATERIAL) 16.dp else 0.dp, vertical = if (style == UiStyle.COUI) 0.dp else 8.dp)) {
+            .padding(horizontal = if (style == UiStyle.MATERIAL) 16.dp else 0.dp, vertical = if (style == UiStyle.MATERIAL) 8.dp else 0.dp)) {
             when (style) {
                 UiStyle.MATERIAL -> NavigationBar(
                     modifier = Modifier.clip(RoundedCornerShape(28.dp)).shadow(8.dp, RoundedCornerShape(28.dp)),
@@ -149,15 +150,25 @@ actual fun UiNavigationLayout(items: List<UiNavItem>, selectedIndex: Int, onSele
                         onClick = { if (index != selectedIndex) onSelected(index) },
                         icon = { Icon(if (index == selectedIndex) item.selectedIcon else item.icon, null) }, label = { Text(item.label) }) }
                 }
-                UiStyle.MIUIX -> MiuixFloatingNavigationBar(modifier = Modifier.graphicsLayer { alpha = .96f }) {
+                UiStyle.MIUIX -> MiuixFloatingToolbar(
+                    color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surfaceContainer.copy(alpha = .97f),
+                    showDivider = true,
+                ) {
                     val itemColors = top.yukonga.miuix.kmp.basic.NavigationBarDefaults.navigationBarItemColors(
                         selectedContentColor = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.primary,
                         unselectedContentColor = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurface,
                     )
-                    items.forEachIndexed { index, item -> MiuixFloatingNavigationBarItem(selected = index == selectedIndex,
-                        onClick = { if (index != selectedIndex) onSelected(index) },
-                        icon = if (index == selectedIndex) item.selectedIcon else item.icon, label = item.label,
-                        colors = itemColors) }
+                    MiuixNavigationBar(
+                        color = Color.Transparent, showDivider = false, defaultWindowInsetsPadding = false,
+                    ) {
+                        items.forEachIndexed { index, item ->
+                            MiuixNavigationBarItem(
+                                selected = index == selectedIndex, onClick = { if (index != selectedIndex) onSelected(index) },
+                                icon = if (index == selectedIndex) item.selectedIcon else item.icon, label = item.label,
+                                colors = itemColors,
+                            )
+                        }
+                    }
                 }
                 UiStyle.COUI -> if (Build.VERSION.SDK_INT >= 34 && LocalDensity.current.fontScale <= 1.3f)
                     ProvideCouiBackdrop(backdrop) { CouiFloatingNavigation(items, selectedIndex, onSelected) }

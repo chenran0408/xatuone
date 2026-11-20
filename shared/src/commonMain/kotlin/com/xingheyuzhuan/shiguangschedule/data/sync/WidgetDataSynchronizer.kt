@@ -9,6 +9,7 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.AppSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.CourseTableRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.TimeScheduleRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.WidgetRepository
+import com.xingheyuzhuan.shiguangschedule.data.repository.widgetTeachingWeek
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,12 +31,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
-import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import org.koin.core.annotation.Single
@@ -200,33 +198,14 @@ class WidgetDataSynchronizer(
             return@withContext
         }
 
-        val alignedSemesterStartDate = getStartDayOfWeek(semesterStartDate, firstDayOfWeekInt)
-
         val widgetCourses = mutableListOf<WidgetCourse>()
-        val startSyncDate = if (today < alignedSemesterStartDate) {
-            alignedSemesterStartDate
-        } else {
-            today
-        }
 
         // 循环计算未来指定天数（widgetSyncDays）内的课程安排
         for (i in 0 until widgetSyncDays) {
-            val date = startSyncDate.plus(i, DateTimeUnit.DAY)
+            val date = today.plus(i, DateTimeUnit.DAY)
             val dateString = date.toString()
-
-            val alignedDate = getStartDayOfWeek(date, firstDayOfWeekInt)
-
-            // 计算当前日期是第几周
-            val diffDays = alignedSemesterStartDate.daysUntil(alignedDate)
-            val diffWeeks = diffDays / 7
-            val weekNumber = diffWeeks + 1
-
+            val weekNumber = widgetTeachingWeek(date, semesterStartDate, firstDayOfWeekInt, semesterTotalWeeks) ?: continue
             val dayOfWeek = date.dayOfWeek.isoDayNumber
-
-            // 超出学期总周数则跳过
-            if (weekNumber !in 1..semesterTotalWeeks) {
-                continue
-            }
 
             // 根据当前具体的日期，动态获取当天真实生效的时间段
             val effectiveTimeSlots = timeScheduleRepository.getEffectiveTimeSlotsOnce(tableId, date)
@@ -274,15 +253,4 @@ class WidgetDataSynchronizer(
         }
     }
 
-    /**
-     * 根据设定的每周起始日（如周一或周日），向前推算并对齐给定日期所在周的起始日。
-     */
-    private fun getStartDayOfWeek(date: LocalDate, firstDayOfWeekInt: Int): LocalDate {
-        val targetFirstDay = DayOfWeek(firstDayOfWeekInt)
-        var current = date
-        while (current.dayOfWeek != targetFirstDay) {
-            current = current.minus(1, DateTimeUnit.DAY)
-        }
-        return current
-    }
 }

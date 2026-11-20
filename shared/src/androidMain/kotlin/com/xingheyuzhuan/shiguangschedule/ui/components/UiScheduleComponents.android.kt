@@ -45,18 +45,19 @@ actual fun uiScheduleCourseShape(cornerRadius: Dp): Shape =
 @Composable
 actual fun UiScheduleCourseCard(
     modifier: Modifier,
-    shape: Shape,
+    cornerRadius: Dp,
     containerColor: Color,
     raised: Boolean,
     pressed: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val shape = uiScheduleCourseShape(cornerRadius)
     when (LocalUiStyle.current) {
         UiStyle.MATERIAL -> Card(
             modifier = modifier.graphicsLayer { scaleX = if (pressed) .98f else 1f; scaleY = if (pressed) .98f else 1f },
             shape = shape,
             colors = CardDefaults.cardColors(containerColor = containerColor),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (raised || pressed) 4.dp else 1.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (raised) 4.dp else 0.dp),
             content = content,
         )
         UiStyle.MIUIX -> {
@@ -66,11 +67,12 @@ actual fun UiScheduleCourseCard(
                 label = "miuixCoursePress",
             )
             val color by animateColorAsState(
-                targetValue = if (raised) MiuixTheme.colorScheme.primary.copy(alpha = .22f) else containerColor,
+                targetValue = if (raised) lerp(containerColor, MiuixTheme.colorScheme.primary, .14f) else containerColor,
                 label = "miuixCourseSurface",
             )
             MiuixCard(
-                modifier = modifier.clip(shape).graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+                modifier = modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+                cornerRadius = cornerRadius,
                 colors = MiuixCardDefaults.defaultColors(color = color),
                 content = content,
             )
@@ -118,7 +120,8 @@ actual fun UiScheduleMarker(
                 label = "miuixScheduleMarker",
             )
             MiuixCard(
-                modifier = modifier.clip(RoundedCornerShape(cornerRadius)),
+                modifier = modifier,
+                cornerRadius = cornerRadius,
                 colors = MiuixCardDefaults.defaultColors(color = color),
             ) { Box(contentAlignment = Alignment.Center, content = content) }
         }

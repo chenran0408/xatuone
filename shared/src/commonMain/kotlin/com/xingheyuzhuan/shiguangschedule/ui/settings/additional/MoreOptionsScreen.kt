@@ -90,7 +90,6 @@ fun MoreOptionsScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             UiCard(Modifier.fillMaxWidth().padding(16.dp)) {
-                UiServiceRow("通知与提醒", "", { onNavigate(Destination.NotificationSettings) })
                 UiServiceRow("网络设置", "", { onNavigate(Destination.WebSettings) })
                     // 语言切换 (导航至独立页面)
                     SettingListItem(

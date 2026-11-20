@@ -8,13 +8,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
-import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.koin.core.annotation.Single
 import kotlin.time.Clock
@@ -98,31 +96,18 @@ class WidgetRepository(
             val startDate = LocalDate.parse(semesterStartDateStr)
             val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
-            val alignedStartDate = getStartDayOfWeek(startDate, firstDayOfWeekInt)
-            val alignedToday = getStartDayOfWeek(today, firstDayOfWeekInt)
-
-            if (alignedToday < alignedStartDate) return null
-
-            val diffDays = alignedStartDate.daysUntil(alignedToday)
-            val diffWeeks = diffDays / 7
-            val calculatedWeek = diffWeeks + 1
-
-            if (calculatedWeek in 1..totalWeeks) calculatedWeek else null
+            widgetTeachingWeek(today, startDate, firstDayOfWeekInt, totalWeeks)
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
 
-    /**
-     * 计算指定日期所在周的起始日期。
-     */
-    private fun getStartDayOfWeek(date: LocalDate, firstDayOfWeekInt: Int): LocalDate {
-        val targetFirstDay = DayOfWeek(firstDayOfWeekInt)
-        var current = date
-        while (current.dayOfWeek != targetFirstDay) {
-            current = current.minus(1, DateTimeUnit.DAY)
-        }
-        return current
-    }
+}
+
+internal fun widgetTeachingWeek(date: LocalDate, start: LocalDate, firstDayOfWeek: Int, totalWeeks: Int): Int? {
+    if (date < start) return null
+    val daysBeforeStart = (start.dayOfWeek.isoDayNumber - firstDayOfWeek + 7) % 7
+    val week = 1 + (daysBeforeStart + start.daysUntil(date)) / 7
+    return week.takeIf { it in 1..totalWeeks }
 }

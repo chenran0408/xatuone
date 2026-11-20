@@ -5,9 +5,11 @@ import android.util.Log
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.xingheyuzhuan.shiguangschedule.data.repository.AppSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.StyleSettingsRepository
 import com.xingheyuzhuan.shiguangschedule.service.CourseNotificationWorker
 import com.xingheyuzhuan.shiguangschedule.service.DndSchedulerWorker
+import com.xingheyuzhuan.shiguangschedule.widget.WorkManagerHelper
 import com.xingheyuzhuan.shiguangschedule.widget.updateAllWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +29,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @Single(createdAtStart = true)
 class SyncManager(
     private val appContext: Context,
+    appSettingsRepository: AppSettingsRepository,
     private val widgetDataSynchronizer: WidgetDataSynchronizer,
     private val styleSettingsRepository: StyleSettingsRepository
 ) {
@@ -34,6 +37,8 @@ class SyncManager(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     init {
+        WorkManagerHelper.monitor(appContext, appSettingsRepository.getAppSettings()).launchIn(scope)
+
         // 1. 监听 KMP 共享层的同步完成信号（包含了课表变更与通知/自动化设置变更）
         widgetDataSynchronizer.syncCompletedFlow
             .debounce(300L.milliseconds)

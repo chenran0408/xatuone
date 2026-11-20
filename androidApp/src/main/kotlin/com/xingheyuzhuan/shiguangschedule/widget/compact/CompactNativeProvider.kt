@@ -23,13 +23,11 @@ class CompactNativeProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        // 启动定时任务（15分钟 UI 刷新 + 24小时数据同步）
-        WorkManagerHelper.schedulePeriodicWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        // 只有在确定不再需要后台更新时才取消
-        WorkManagerHelper.cancelAllWork(context)
+        WorkManagerHelper.updateWidgetPresence(context)
     }
 }

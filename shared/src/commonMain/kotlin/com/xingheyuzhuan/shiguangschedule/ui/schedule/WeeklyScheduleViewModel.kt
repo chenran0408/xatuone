@@ -2,6 +2,7 @@ package com.xingheyuzhuan.shiguangschedule.ui.schedule
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xingheyuzhuan.shiguangschedule.data.db.main.Course
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseWithWeeks
 import com.xingheyuzhuan.shiguangschedule.data.model.ScheduleGridStyle
 import com.xingheyuzhuan.shiguangschedule.data.model.schedule_style.ScheduleModeProto
@@ -14,7 +15,10 @@ import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.ScheduleConfigPackag
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.WeeklyScheduleUiState
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.CourseMergeUtils.gridScaleToTime
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.CourseMergeUtils.mergeCourses
-import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.calculateCurrentSectionIndex
+import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.CourseMergeUtils.courseTimes
+import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.acceptsCourseOn
+import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.WeekSchedulePage
+import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.formatToHHmm
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.getTodayLocalDate
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.startOfWeek
@@ -57,6 +61,8 @@ class WeeklyScheduleViewModel(
         getTodayLocalDate().startOfWeek(DayOfWeek.MONDAY)
     )
 
+    private val visibleToday = MutableStateFlow(getTodayLocalDate())
+
     private val _isDarkTheme = MutableStateFlow(false)
 
     fun updateDarkTheme(isDark: Boolean) {
@@ -72,33 +78,6 @@ class WeeklyScheduleViewModel(
             appSettingsRepository.getCourseTableConfigFlow(tableId)
         } else {
             flowOf(null)
-        }
-    }
-
-    // 侧边栏时间/节次流
-    private val timeSlotsFlow = combine(
-        appSettingsFlow,
-        _pagerMondayDate,
-        courseTableConfigFlow
-    ) { settings, pagerDate, config ->
-        val tableId = settings.currentCourseTableId
-        val today = getTodayLocalDate()
-
-        val firstDayOfWeekInt = config?.firstDayOfWeek ?: DayOfWeek.MONDAY.isoDayNumber
-        val firstDayOfWeek = DayOfWeek(firstDayOfWeekInt)
-
-        val currentWeekStart = today.startOfWeek(firstDayOfWeek)
-
-        val isCurrentWeek = pagerDate == currentWeekStart
-
-        // 本周使用真实的今天日期 today（以显示今天对应的特殊/轮番作息），非本周使用该周起始日 pagerDate
-        val targetDateForSidebar = if (isCurrentWeek) today else pagerDate
-        tableId to targetDateForSidebar
-    }.flatMapLatest { (tableId, targetDate) ->
-        if (tableId.isNotEmpty()) {
-            timeScheduleRepository.observeEffectiveTimeSlots(tableId, targetDate)
-        } else {
-            flowOf(emptyList())
         }
     }
 
@@ -118,29 +97,20 @@ class WeeklyScheduleViewModel(
                 date.plus(1, DateTimeUnit.WEEK)
             )
 
-            combine(window.map { day ->
-                val pageWeekNum = appSettingsRepository.getWeekIndexAtDate(
-                    targetDate = day,
-                    startDateStr = config.semesterStartDate,
-                    firstDayOfWeekInt = config.firstDayOfWeek
-                )
-
-                val isWithinSemester = pageWeekNum != null && pageWeekNum in 1..config.semesterTotalWeeks
-
-                val coursesFlow = if (settings.showNonCurrentWeekCourses && isWithinSemester) {
-                    courseTableRepository.getCoursesWithWeeksByTableId(tableId).map { allCourses ->
-                        allCourses.filter { cw ->
-                            cw.weeks.any { it.weekNumber >= pageWeekNum }
-                        }
+            val semesterStart = config.semesterStartDate?.let { LocalDate.parse(it) }
+            val holidays = settings.holidays.filter { it.isHoliday }.flatMap { it.dates }.toSet()
+            combine(window.map { weekStart ->
+                val pageWeek = appSettingsRepository.getWeekIndexAtDate(weekStart, config.semesterStartDate, config.firstDayOfWeek)
+                val dates = (0..6).map { weekStart.plus(it, DateTimeUnit.DAY) }
+                val courses = when {
+                    pageWeek == null || pageWeek !in 1..config.semesterTotalWeeks -> flowOf(emptyList())
+                    settings.showNonCurrentWeekCourses -> courseTableRepository.getCoursesWithWeeksByTableId(tableId).map { all ->
+                        all.filter { course -> course.weeks.any { it.weekNumber >= pageWeek } }
                     }
-                } else {
-                    courseTableRepository.getCoursesWithWeeksByDate(tableId, day, config)
+                    else -> courseTableRepository.getCoursesWithWeeksByDate(tableId, weekStart, config)
                 }
-
-                val daySlotsFlow = timeScheduleRepository.observeEffectiveTimeSlots(tableId, day)
-
-                combine(coursesFlow, daySlotsFlow) { courses, daySlots ->
-                    day.toString() to mergeCourses(courses, daySlots, pageWeekNum ?: -1, mode)
+                combine(courses, timeScheduleRepository.observeEffectiveTimeSlots(tableId, dates)) { rows, slots ->
+                    weekStart to buildWeekPage(rows, slots, holidays, pageWeek ?: 0, semesterStart, mode)
                 }
             }) { results -> results.toMap() }
         } else {
@@ -159,12 +129,14 @@ class WeeklyScheduleViewModel(
                 ScheduleConfigPackage(settings, config, style, mondayDate)
             }
 
-            combine(configAndTimeFlow, currentCoursesFlow, timeSlotsFlow, _isDarkTheme) { configPkg, cache, timeSlots, isDark ->
+            combine(configAndTimeFlow, currentCoursesFlow, visibleToday, _isDarkTheme) { configPkg, cache, today, isDark ->
                 val config = configPkg.config
                 val startDate = config?.semesterStartDate?.let { LocalDate.parse(it) }
                 val firstDayOfWeekInt = config?.firstDayOfWeek ?: DayOfWeek.MONDAY.isoDayNumber
                 val totalWeeks = config?.semesterTotalWeeks ?: 20
-                val today = getTodayLocalDate()
+                val page = cache[configPkg.mondayDate]
+                val sidebarDate = if (today.startOfWeek(DayOfWeek(firstDayOfWeekInt)) == configPkg.mondayDate) today else configPkg.mondayDate
+                val timeSlots = page?.slotsByDay?.get(sidebarDate.dayOfWeek.isoDayNumber).orEmpty()
 
                 val currentWeekNum = appSettingsRepository.getWeekIndexAtDate(
                     targetDate = today,
@@ -178,13 +150,11 @@ class WeeklyScheduleViewModel(
                     firstDayOfWeekInt = firstDayOfWeekInt
                 )
 
-                val currentSectionIndex = calculateCurrentSectionIndex(timeSlots)
-
                 val daysUntil = if (startDate != null && today < startDate) {
                     today.daysUntil(startDate).toLong()
                 } else 0L
 
-                val currentWeekCourses = cache[configPkg.mondayDate.toString()] ?: emptyList()
+                val currentWeekCourses = page?.courses.orEmpty()
                 fixInvalidCourseColors(currentWeekCourses.flatMap { it.courses }, configPkg.style)
 
                 val wallpaperPath = appSettingsRepository.getActiveWallpaperPath(isDark)
@@ -196,7 +166,7 @@ class WeeklyScheduleViewModel(
                     showWeekends = config?.showWeekends ?: false,
                     totalWeeks = totalWeeks,
                     courseCache = cache,
-                    currentMergedCourses = cache[configPkg.mondayDate.toString()] ?: emptyList(),
+                    currentMergedCourses = page?.courses.orEmpty(),
                     timeSlots = timeSlots,
                     isSemesterSet = startDate != null,
                     semesterStartDate = startDate,
@@ -204,15 +174,17 @@ class WeeklyScheduleViewModel(
                     weekIndexInPager = weekIndex,
                     currentWeekNumber = currentWeekNum,
                     pagerMondayDate = configPkg.mondayDate,
-                    currentSectionIndex = currentSectionIndex,
                     daysUntilStart = daysUntil,
                     floatingCourse = previousState.floatingCourse,
                     floatingSourceWeek = previousState.floatingSourceWeek,
+                    floatingDurationMinutes = previousState.floatingDurationMinutes,
                     wallpaperPath = wallpaperPath
                 )
             }.collect { _uiState.value = it }
         }
     }
+
+    fun updateToday(date: LocalDate) { visibleToday.value = date }
 
     fun updatePagerDate(newDate: LocalDate) = _pagerMondayDate.update { newDate }
 
@@ -238,11 +210,14 @@ class WeeklyScheduleViewModel(
     /**
      * 进入跨周移动暂存状态
      */
-    fun enterFloatingMode(course: CourseWithWeeks, sourceWeek: Int) {
+    fun enterFloatingMode(course: CourseWithWeeks, sourceWeek: Int, slots: List<TimeSlot>) {
+        val (start, end) = courseTimes(course.course, slots) ?: return
+        val duration = (end.toSecondOfDay() - start.toSecondOfDay()) / 60
         _uiState.update {
             it.copy(
                 floatingCourse = course,
-                floatingSourceWeek = sourceWeek
+                floatingSourceWeek = sourceWeek,
+                floatingDurationMinutes = duration
             )
         }
     }
@@ -254,7 +229,8 @@ class WeeklyScheduleViewModel(
         _uiState.update {
             it.copy(
                 floatingCourse = null,
-                floatingSourceWeek = null
+                floatingSourceWeek = null,
+                floatingDurationMinutes = null
             )
         }
     }
@@ -266,12 +242,12 @@ class WeeklyScheduleViewModel(
         targetWeek: Int,
         targetDay: Int,
         startSection: Float,
-        endSection: Float,
         onComplete: () -> Unit = {}
     ) {
         viewModelScope.launch {
+            val state = _uiState.value
+            if (!state.acceptsCourseOn(targetWeek, targetDay)) return@launch
             try {
-                val state = _uiState.value
                 val courseWrapper = state.floatingCourse ?: return@launch
                 val sourceWeek = state.floatingSourceWeek ?: return@launch
                 val mode = state.style.toComposedStyle().scheduleMode
@@ -284,40 +260,12 @@ class WeeklyScheduleViewModel(
                 val originalCourse = courseWrapper.course
 
                 val updatedCourseForTime = if (mode == ScheduleModeProto.TIME_24H_MODE) {
-                    val baseStartTime = gridScaleToTime(startSection, slots, mode)
-                    val origStart = LocalTime.parse(originalCourse.customStartTime ?: "08:00")
-                    val origEnd = LocalTime.parse(originalCourse.customEndTime ?: "09:00")
-                    val originalDurationMinutes = ((origEnd.toSecondOfDay() - origStart.toSecondOfDay()) / 60).coerceAtLeast(1)
-                    val newStartTime = baseStartTime
-                    val startMinutesFromMidnight = newStartTime.hour * 60 + newStartTime.minute
-                    val rawEndMinutes = startMinutesFromMidnight + originalDurationMinutes
-
-                    val (finalEndTime, isTruncatedToMidnight) = if (rawEndMinutes >= 1440) {
-                        LocalTime(23, 59) to true
-                    } else {
-                        val endSec = (newStartTime.toSecondOfDay() + originalDurationMinutes * 60) % (24 * 3600)
-                        LocalTime(endSec / 3600, (endSec % 3600) / 60) to false
-                    }
-                    val calcStartSection = newStartTime.hour + 1
-
-                    val finalEndSection = if (isTruncatedToMidnight) {
-                        24
-                    } else {
-                        val calcEndSection = if (finalEndTime.minute > 0) finalEndTime.hour + 1 else finalEndTime.hour
-                        if (calcEndSection == 0) 24 else calcEndSection
-                    }
-
-                    originalCourse.copy(
-                        day = targetDay,
-                        isCustomTime = true,
-                        customStartTime = newStartTime.formatToHHmm(),
-                        customEndTime = finalEndTime.formatToHHmm(),
-                        startSection = calcStartSection.coerceIn(1, 24),
-                        endSection = finalEndSection.coerceIn(1, 24)
-                    )
+                    val duration = state.floatingDurationMinutes ?: return@launch
+                    moveTimedCourse(originalCourse, targetDay, gridScaleToTime(startSection, slots, mode), duration)
                 } else {
+                    val sectionOffset = (originalCourse.endSection ?: 1) - (originalCourse.startSection ?: 1)
                     val newStartSection = startSection.toInt().coerceIn(1, slots.size)
-                    val newEndSection = endSection.toInt().coerceIn(1, slots.size)
+                    val newEndSection = (newStartSection + sectionOffset).coerceIn(1, slots.size)
                     if (newStartSection > newEndSection) return@launch
 
                     originalCourse.copy(
@@ -361,7 +309,8 @@ class WeeklyScheduleViewModel(
                 _uiState.update {
                     it.copy(
                         floatingCourse = null,
-                        floatingSourceWeek = null
+                        floatingSourceWeek = null,
+                        floatingDurationMinutes = null
                     )
                 }
                 onComplete()
@@ -384,7 +333,8 @@ class WeeklyScheduleViewModel(
                 val state = _uiState.value
                 val mode = state.style.toComposedStyle().scheduleMode
                 val slots = state.timeSlots
-                val currentWeek = state.weekIndexInPager ?: state.currentWeekNumber ?: return@launch
+                val currentWeek = state.weekIndexInPager ?: return@launch
+                if (!state.acceptsCourseOn(currentWeek, targetDay)) return@launch
 
                 val currentSettings = appSettingsRepository.getAppSettingsOnce()
                 val tableId = currentSettings.currentCourseTableId
@@ -403,8 +353,8 @@ class WeeklyScheduleViewModel(
                         isCustomTime = true,
                         customStartTime = newStartTime.formatToHHmm(),
                         customEndTime = newEndTime.formatToHHmm(),
-                        startSection = (startSection.toInt() + 1).coerceIn(1, 24),
-                        endSection = (endSection.toInt() + 1).coerceIn(1, 24)
+                        startSection = null,
+                        endSection = null
                     )
                 } else {
                     val newStartSection = (startSection.toInt() + 1).coerceIn(1, slots.size)
@@ -452,4 +402,28 @@ class WeeklyScheduleViewModel(
             }
         }
     }
+}
+internal fun buildWeekPage(
+    courses: List<CourseWithWeeks>,
+    slotsByDate: Map<LocalDate, List<TimeSlot>>,
+    holidays: Set<LocalDate>,
+    week: Int,
+    semesterStart: LocalDate?,
+    mode: ScheduleModeProto
+): WeekSchedulePage {
+    val byDay = courses.groupBy { it.course.day }
+    val blocks = slotsByDate.flatMap { (date, slots) ->
+        if (semesterStart == null || date < semesterStart || date in holidays) emptyList()
+        else mergeCourses(byDay[date.dayOfWeek.isoDayNumber].orEmpty(), slots, week, mode)
+    }
+    return WeekSchedulePage(week, blocks, slotsByDate.mapKeys { it.key.dayOfWeek.isoDayNumber })
+}
+
+internal fun moveTimedCourse(course: Course, targetDay: Int, start: LocalTime, durationMinutes: Int): Course {
+    val endMinute = (start.hour * 60 + start.minute + durationMinutes).coerceAtMost(23 * 60 + 59)
+    return course.copy(
+        day = targetDay, isCustomTime = true,
+        customStartTime = start.formatToHHmm(), customEndTime = LocalTime(endMinute / 60, endMinute % 60).formatToHHmm(),
+        startSection = null, endSection = null
+    )
 }

@@ -1,5 +1,6 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schedule.util
 
+import com.xingheyuzhuan.shiguangschedule.data.db.main.Course
 import com.xingheyuzhuan.shiguangschedule.data.db.main.CourseWithWeeks
 import com.xingheyuzhuan.shiguangschedule.data.db.main.TimeSlot
 import com.xingheyuzhuan.shiguangschedule.data.model.schedule_style.ScheduleModeProto
@@ -8,6 +9,14 @@ import com.xingheyuzhuan.shiguangschedule.ui.schedule.model.NormalizedCourse
 import kotlinx.datetime.LocalTime
 
 object CourseMergeUtils {
+
+    internal fun courseTimes(course: Course, slots: List<TimeSlot>): Pair<LocalTime, LocalTime>? {
+        val start = if (course.isCustomTime) course.customStartTime else slots.find { it.number == course.startSection }?.startTime
+        val end = if (course.isCustomTime) course.customEndTime else slots.find { it.number == course.endSection }?.endTime
+        if (start == null || end == null) return null
+        return LocalTime.parse(start) to LocalTime.parse(end)
+    }
+
 
     /**
      * 核心统一时间换算器：将任意 [LocalTime] 转化为网格上的 Float 纵坐标
@@ -119,14 +128,7 @@ object CourseMergeUtils {
             try {
                 val c = cw.course
 
-                val (sTime, eTime) = if (c.isCustomTime) {
-                    LocalTime.parse(c.customStartTime ?: return@mapNotNull null) to
-                            LocalTime.parse(c.customEndTime ?: return@mapNotNull null)
-                } else {
-                    val startSlot = timeSlots.find { it.number == c.startSection } ?: return@mapNotNull null
-                    val endSlot = timeSlots.find { it.number == c.endSection } ?: return@mapNotNull null
-                    LocalTime.parse(startSlot.startTime) to LocalTime.parse(endSlot.endTime)
-                }
+                val (sTime, eTime) = courseTimes(c, timeSlots) ?: return@mapNotNull null
 
                 val s = timeToGridScale(sTime, timeSlots, mode)
                 val e = timeToGridScale(eTime, timeSlots, mode)

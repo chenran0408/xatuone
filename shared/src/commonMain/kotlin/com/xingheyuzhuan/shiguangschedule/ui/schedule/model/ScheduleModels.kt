@@ -7,6 +7,8 @@ import com.xingheyuzhuan.shiguangschedule.data.model.AppSettingsModel
 import com.xingheyuzhuan.shiguangschedule.data.model.ScheduleGridStyle
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.getTodayLocalDate
 import com.xingheyuzhuan.shiguangschedule.ui.schedule.util.startOfWeek
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.plus
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -26,12 +28,18 @@ data class MergedCourseBlock(
     val clusterCourses: List<CourseWithWeeks> = emptyList()
 )
 
+data class WeekSchedulePage(
+    val week: Int,
+    val courses: List<MergedCourseBlock>,
+    val slotsByDay: Map<Int, List<TimeSlot>>
+)
+
 data class WeeklyScheduleUiState(
     val style: ScheduleGridStyle = ScheduleGridStyle(),
     val showWeekends: Boolean = false,
     val totalWeeks: Int = 20,
     val timeSlots: List<TimeSlot> = emptyList(),
-    val courseCache: Map<String, List<MergedCourseBlock>> = emptyMap(),
+    val courseCache: Map<LocalDate, WeekSchedulePage> = emptyMap(),
     val currentMergedCourses: List<MergedCourseBlock> = emptyList(),
     val isSemesterSet: Boolean = false,
     val semesterStartDate: LocalDate? = null,
@@ -39,12 +47,21 @@ data class WeeklyScheduleUiState(
     val weekIndexInPager: Int? = null,
     val currentWeekNumber: Int? = null,
     val pagerMondayDate: LocalDate = getTodayLocalDate().startOfWeek(DayOfWeek.MONDAY),
-    val currentSectionIndex: Int = -1,
     val daysUntilStart: Long = 0,
     val floatingCourse: CourseWithWeeks? = null,
     val floatingSourceWeek: Int? = null,
+    val floatingDurationMinutes: Int? = null,
     val wallpaperPath: String? = null
 )
+
+internal fun WeeklyScheduleUiState.acceptsCourseOn(week: Int, day: Int): Boolean {
+    val start = semesterStartDate ?: return false
+    if (week !in 1..totalWeeks) return false
+    val daysSinceWeekStart = (day - firstDayOfWeek + 7) % 7
+    val target = start.startOfWeek(DayOfWeek(firstDayOfWeek))
+        .plus((week - 1) * 7 + daysSinceWeekStart, DateTimeUnit.DAY)
+    return target >= start
+}
 
 /**
  * 规范化课程坐标的中间对象

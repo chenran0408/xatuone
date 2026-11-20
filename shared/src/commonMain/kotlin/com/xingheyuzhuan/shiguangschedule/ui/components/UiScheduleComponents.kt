@@ -15,7 +15,7 @@ expect fun uiScheduleCourseShape(cornerRadius: Dp): Shape
 @Composable
 expect fun UiScheduleCourseCard(
     modifier: Modifier,
-    shape: Shape,
+    cornerRadius: Dp,
     containerColor: Color,
     raised: Boolean,
     pressed: Boolean,

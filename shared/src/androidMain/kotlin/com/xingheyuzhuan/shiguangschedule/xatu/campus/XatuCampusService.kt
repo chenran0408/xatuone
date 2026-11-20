@@ -2,14 +2,18 @@ package com.xingheyuzhuan.shiguangschedule.xatu.campus
 
 import android.webkit.CookieManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -23,13 +27,26 @@ class XatuCampusService(
     private val payClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
     private val payBase = "https://jfpay.xatu.edu.cn/"
 
+    private fun payToken(url: String = payBase + "api/pay/queryUserInfo") = cookieManager.getCookie(url)
+        .orEmpty().split(';').map { it.trim() }
+        .firstOrNull { it.startsWith("datalook_reimbursement_token=") }
+        ?.substringAfter('=')?.takeIf(String::isNotBlank)
+
+    fun hasPayCookie() = payToken() != null
+
+    suspend fun confirmPaySession() = withContext(Dispatchers.IO) {
+        requireSignedInPayUser(request("pay/queryUserInfo"))
+    }
+
+    suspend fun awaitPayLogin(pageUrl: String): Boolean {
+        if (!isPaymentPage(pageUrl)) return false
+        awaitAcceptedPayCookie({ payToken() }, ::confirmPaySession)
+        return true
+    }
+
     private fun request(path: String, params: Map<String, String>? = null): JsonElement {
         val url = payBase + "api/" + path
-        val token = cookieManager.getCookie(url).orEmpty().split("; ")
-            .firstOrNull { it.startsWith("datalook_reimbursement_token=") }
-            ?.substringAfter('=')
-            .orEmpty()
-        val hasToken = token.isNotBlank()
+        val token = payToken(url) ?: throw XatuPaySessionExpired(false)
         val builder = Request.Builder()
             .url(url)
             .header("X-Token", token)
@@ -39,10 +56,10 @@ class XatuCampusService(
             builder.post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
         }
         return payClient.newCall(builder.build()).execute().use { response ->
-            if (response.code == 401 || response.isRedirect) throw XatuPaySessionExpired(hasToken)
+            if (response.code == 401 || response.isRedirect) throw XatuPaySessionExpired(true)
             if (response.code == 403) error("缴费平台拒绝访问（HTTP 403）")
             if (!response.isSuccessful) error("缴费平台返回 HTTP ${response.code}")
-            payResponseData(Json.parseToJsonElement(response.body.string()), hasToken)
+            payResponseData(Json.parseToJsonElement(response.body.string()), hasToken = true)
         }
     }
 
@@ -87,5 +104,35 @@ class XatuCampusService(
             "roomid" to dorm.room.id
         ))).firstOrNull() ?: throw XatuElectricityNoData()
         remainingElectricityInDegrees(row)
+    }
+}
+
+internal fun isPaymentPage(url: String): Boolean = url.toHttpUrlOrNull()?.let {
+    it.isHttps && it.host == "jfpay.xatu.edu.cn" && it.port == 443
+} == true
+
+// The platform's own user/getInfo flow reads data.id. Guests also receive
+// HTTP 200 and messageCode 0, but with data: null.
+internal fun requireSignedInPayUser(data: JsonElement) {
+    if ((data as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull.isNullOrBlank()) {
+        throw XatuPaySessionExpired(true)
+    }
+}
+
+// The payment SPA may write its cookie after onPageFinished. Probe the service
+// once per credential; the WebView cancels observation on navigation or dismissal.
+internal suspend fun awaitAcceptedPayCookie(readCookie: () -> String?, checkSession: suspend () -> Unit) {
+    var rejected: String? = null
+    while (true) {
+        val token = readCookie()
+        if (token != null && token != rejected) {
+            try {
+                checkSession()
+                return
+            } catch (_: XatuPaySessionExpired) {
+                rejected = token
+            }
+        }
+        delay(500)
     }
 }

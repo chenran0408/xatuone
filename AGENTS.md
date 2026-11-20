@@ -26,6 +26,7 @@
 ```
 
 本地 Release 构建仅用于验证。正式签名必须通过 CI 的签名参数注入。
+Android 正式版构建必须同时启用 R8 代码压缩（`isMinifyEnabled = true`）和资源缩减（`isShrinkResources = true`）。
 
 ## 修改流程
 

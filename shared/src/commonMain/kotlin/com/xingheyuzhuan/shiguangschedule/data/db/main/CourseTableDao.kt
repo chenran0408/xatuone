@@ -5,7 +5,7 @@ import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.Update
-import androidx.room3.Delete
+import androidx.room3.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -50,19 +50,23 @@ interface CourseTableDao {
     @Update
     suspend fun update(courseTable: CourseTable)
 
-    /**
-     * 删除一个或多个课表。
-     * 由于外键设置为 `onDelete = ForeignKey.CASCADE`，
-     * 删除课表时，其下的所有课程也会被自动删除。
-     */
-    @Delete
-    suspend fun delete(courseTable: CourseTable)
+    @Query("DELETE FROM course_tables WHERE id = :tableId AND EXISTS (SELECT 1 FROM course_tables WHERE id != :tableId)")
+    suspend fun deleteIfAnotherTableExists(tableId: String): Int
 
-    /**
-     * 根据课表ID删除单个课表。
-     */
-    @Query("DELETE FROM course_tables WHERE id = :tableId")
-    suspend fun deleteById(tableId: String)
+    @Query("""
+        DELETE FROM time_tables WHERE id = :tableId AND name IS NULL
+        AND NOT EXISTS (SELECT 1 FROM course_time_bindings WHERE targetId = :tableId)
+        AND NOT EXISTS (SELECT 1 FROM time_table_combos WHERE baseTimeTableId = :tableId)
+        AND NOT EXISTS (SELECT 1 FROM time_table_combo_rules WHERE targetTimeTableId = :tableId)
+    """)
+    suspend fun deleteUnusedExclusiveSchedule(tableId: String)
+
+    @Transaction
+    suspend fun deleteWithExclusiveSchedule(tableId: String): Boolean {
+        if (deleteIfAnotherTableExists(tableId) == 0) return false
+        deleteUnusedExclusiveSchedule(tableId)
+        return true
+    }
 
 
     /**

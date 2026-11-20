@@ -135,6 +135,9 @@
     <string name="widget_course_total_count">%1$d total</string>
     <string name="title_course_notification_settings">Course reminder settings</string>
     <string name="section_title_general">General</string>
+    <string name="section_reminder_options">Reminder options</string>
+    <string name="section_reminder_permissions">System permissions</string>
+    <string name="item_notification_permission">Notification permission</string>
     <string name="section_title_advanced">Advanced</string>
     <string name="item_course_reminder">Course reminders</string>
     <string name="item_remind_time_before">Remind before</string>
@@ -347,6 +350,7 @@
     <string name="tweak_mode_overwrite">Overwrite (A → B)</string>
     <string name="tweak_mode_exchange">Exchange (A ↔ B)</string>
     <string name="date_format_month_day">%1$d/%2$d</string>
+    <string name="schedule_header_month">%1$d</string>
 
     <!-- Academic System Import -->
     <string name="title_select_school">Select school</string>

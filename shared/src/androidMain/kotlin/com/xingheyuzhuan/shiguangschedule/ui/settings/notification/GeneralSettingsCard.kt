@@ -1,10 +1,10 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.notification
 
-import android.os.Build
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import com.xingheyuzhuan.shiguangschedule.ui.components.*
@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import shiguangschedule.shared.generated.resources.Res
@@ -22,12 +23,15 @@ import shiguangschedule.shared.generated.resources.item_auto_mode
 import shiguangschedule.shared.generated.resources.item_background_and_autostart
 import shiguangschedule.shared.generated.resources.item_compat_wearable_sync
 import shiguangschedule.shared.generated.resources.item_course_reminder
+import shiguangschedule.shared.generated.resources.item_notification_permission
 import shiguangschedule.shared.generated.resources.item_dnd_permission
 import shiguangschedule.shared.generated.resources.item_exact_alarm_permission
 import shiguangschedule.shared.generated.resources.item_ignore_battery_optimization
 import shiguangschedule.shared.generated.resources.item_remind_time_before
 import shiguangschedule.shared.generated.resources.remind_time_minutes_format
-import shiguangschedule.shared.generated.resources.section_title_general
+import com.xingheyuzhuan.shiguangschedule.data.model.UiStyle
+import shiguangschedule.shared.generated.resources.section_reminder_options
+import shiguangschedule.shared.generated.resources.section_reminder_permissions
 import shiguangschedule.shared.generated.resources.status_authorized
 import shiguangschedule.shared.generated.resources.status_disabled
 import shiguangschedule.shared.generated.resources.status_enabled
@@ -40,6 +44,8 @@ import shiguangschedule.shared.generated.resources.status_unauthorized
 fun GeneralSettingsCard(
     uiState: NotificationSettingsUiState,
     currentModeText: String?,
+    notificationsGranted: Boolean,
+    onNotificationSettingsClick: () -> Unit,
     onReminderToggle: (Boolean) -> Unit,
     onCompatWearableToggle: (Boolean) -> Unit,
     onAutoModeClick: () -> Unit,
@@ -53,128 +59,46 @@ fun GeneralSettingsCard(
     // 仅在开启提醒开关但无权限时弹窗引导
     var showExactAlarmDialog by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
-        val title = stringResource(Res.string.section_title_general)
-        val settingsRows: @Composable (Modifier) -> Unit = { rowsModifier ->
-            Column(modifier = rowsModifier) {
-                // 1. 上课提醒主开关
-                UiSettingRow(
-                    title = stringResource(Res.string.item_course_reminder),
-                    trailingContent = {
-                        UiSwitch(
-                            checked = uiState.reminderEnabled,
-                            onCheckedChange = { targetState ->
-                                if (targetState) {
-                                    if (hasExactAlarmPermission(context)) {
-                                        onReminderToggle(true)
-                                    } else {
-                                        showExactAlarmDialog = true
-                                    }
-                                } else {
-                                    onReminderToggle(false)
-                                }
-                            }
-                        )
-                    },
-                )
-
-                UiListDivider()
-
-                // 2. 兼容穿戴设备同步通知开关
-                UiSettingRow(
-                    title = stringResource(Res.string.item_compat_wearable_sync),
-                    trailingContent = {
-                        UiSwitch(
-                            checked = uiState.compatWearableSync,
-                            onCheckedChange = onCompatWearableToggle
-                        )
-                    },
-                )
-
-                UiListDivider()
-
-                // 3. 上课自动模式
-                SettingItemRow(
-                    title = stringResource(Res.string.item_auto_mode),
-                    currentValue = currentModeText,
-                    onClick = onAutoModeClick
-                )
-
-                UiListDivider()
-
-                // 4. 提前提醒时间
-                SettingItemRow(
-                    title = stringResource(Res.string.item_remind_time_before),
-                    currentValue = stringResource(Res.string.remind_time_minutes_format, uiState.remindBeforeMinutes),
-                    onClick = onRemindTimeClick
-                )
-
-                // 5. 精确闹钟权限 (Android 12+)：直接跳转页面
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    UiListDivider()
-                    val statusText = if (uiState.exactAlarmStatus)
-                        stringResource(Res.string.status_enabled)
-                    else
-                        stringResource(Res.string.status_disabled)
-
-                    SettingItemRow(
-                        title = stringResource(Res.string.item_exact_alarm_permission),
-                        currentValue = statusText,
-                        onClick = { openExactAlarmSettings(context) }
-                    )
-                }
-
-                UiListDivider()
-
-                // 6. 勿扰模式权限：直接跳转页面
-                val dndStatusText = if (uiState.dndPermissionStatus)
-                    stringResource(Res.string.status_authorized)
-                else
-                    stringResource(Res.string.status_unauthorized)
-
-                SettingItemRow(
-                    title = stringResource(Res.string.item_dnd_permission),
-                    currentValue = dndStatusText,
-                    onClick = { openDndSettings(context) }
-                )
-
-                UiListDivider()
-
-                // 7. 后台与自启动
-                SettingItemRow(
-                    title = stringResource(Res.string.item_background_and_autostart),
-                    onClick = onAppSettingsClick
-                )
-
-                UiListDivider()
-
-                // 8. 忽略电池优化
-                SettingItemRow(
-                    title = stringResource(Res.string.item_ignore_battery_optimization),
-                    onClick = onBatteryOptimizationClick
-                )
-            }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(if (LocalUiStyle.current == UiStyle.COUI) 0.dp else 12.dp)) {
+        ReminderSection(stringResource(Res.string.section_reminder_options)) {
+            UiSettingRow(
+                title = stringResource(Res.string.item_course_reminder),
+                modifier = Modifier.toggleable(uiState.reminderEnabled, role = Role.Switch) { enable ->
+                    if (enable && !hasExactAlarmPermission(context)) showExactAlarmDialog = true
+                    else onReminderToggle(enable)
+                },
+                trailingContent = { UiSwitch(uiState.reminderEnabled, onCheckedChange = null) },
+            )
+            SettingItemRow(
+                title = stringResource(Res.string.item_remind_time_before),
+                currentValue = stringResource(Res.string.remind_time_minutes_format, uiState.remindBeforeMinutes),
+                onClick = onRemindTimeClick,
+            )
+            SettingItemRow(stringResource(Res.string.item_auto_mode), currentValue = currentModeText, onClick = onAutoModeClick)
+            UiSettingRow(
+                title = stringResource(Res.string.item_compat_wearable_sync),
+                modifier = Modifier.toggleable(uiState.compatWearableSync, role = Role.Switch, onValueChange = onCompatWearableToggle),
+                trailingContent = { UiSwitch(uiState.compatWearableSync, onCheckedChange = null) },
+            )
         }
-
-        when (LocalUiStyle.current) {
-            com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.COUI ->
-                CouiSettingsGroup(title) { settingsRows(Modifier) }
-
-            com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX -> {
-                top.yukonga.miuix.kmp.basic.SmallTitle(title)
-                Spacer(Modifier.height(8.dp))
-                UiCard(modifier = Modifier.fillMaxWidth()) {
-                    settingsRows(Modifier.padding(16.dp))
-                }
-            }
-
-            com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MATERIAL -> {
-                UiText(title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                UiCard(modifier = Modifier.fillMaxWidth()) {
-                    settingsRows(Modifier.padding(16.dp))
-                }
-            }
+        ReminderSection(stringResource(Res.string.section_reminder_permissions)) {
+            SettingItemRow(
+                title = stringResource(Res.string.item_notification_permission),
+                currentValue = stringResource(if (notificationsGranted) Res.string.status_authorized else Res.string.status_unauthorized),
+                onClick = onNotificationSettingsClick,
+            )
+            SettingItemRow(
+                title = stringResource(Res.string.item_exact_alarm_permission),
+                currentValue = stringResource(if (uiState.exactAlarmStatus) Res.string.status_enabled else Res.string.status_disabled),
+                onClick = { openExactAlarmSettings(context) },
+            )
+            SettingItemRow(
+                title = stringResource(Res.string.item_dnd_permission),
+                currentValue = stringResource(if (uiState.dndPermissionStatus) Res.string.status_authorized else Res.string.status_unauthorized),
+                onClick = { openDndSettings(context) },
+            )
+            SettingItemRow(stringResource(Res.string.item_background_and_autostart), onClick = onAppSettingsClick)
+            SettingItemRow(stringResource(Res.string.item_ignore_battery_optimization), onClick = onBatteryOptimizationClick)
         }
     }
 
@@ -183,5 +107,18 @@ fun GeneralSettingsCard(
         ExactAlarmPermissionGuideDialog(
             onDismiss = { showExactAlarmDialog = false }
         )
+    }
+}
+
+@Composable
+private fun ReminderSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    when (LocalUiStyle.current) {
+        UiStyle.MIUIX -> MiuixSettingsGroup(title, content)
+        UiStyle.COUI -> CouiSettingsGroup(title, content)
+        UiStyle.MATERIAL -> Column(Modifier.fillMaxWidth()) {
+            UiText(title, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            content()
+        }
     }
 }

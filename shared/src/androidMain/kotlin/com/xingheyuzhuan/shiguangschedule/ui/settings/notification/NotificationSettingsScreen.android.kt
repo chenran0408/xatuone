@@ -1,12 +1,16 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings.notification
 
 import android.Manifest
-import android.os.Build
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -31,13 +35,17 @@ actual fun PlatformGeneralSettingsSection(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
 
     // 注册通知权限请求器，若用户拒绝授权则通过 ToastManager 弹出提示
     val permissionDeniedMessage = stringResource(Res.string.toast_notification_permission_denied)
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (!isGranted) {
+        notificationsGranted = isGranted
+        if (isGranted) {
+            viewModel.updateReminderEnabled(true)
+        } else {
             ToastManager.show(permissionDeniedMessage)
         }
     }
@@ -46,6 +54,7 @@ actual fun PlatformGeneralSettingsSection(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsGranted = hasNotificationPermission(context)
                 viewModel.updateExactAlarmStatus(hasExactAlarmPermission(context))
                 viewModel.updateDndPermissionStatus(hasDndPermission(context))
             }
@@ -54,13 +63,6 @@ actual fun PlatformGeneralSettingsSection(
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    // 页面首次挂载时在 Android 13+ 平台上按需发起通知权限申请
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission(context)) {
-            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -78,8 +80,17 @@ actual fun PlatformGeneralSettingsSection(
     GeneralSettingsCard(
         uiState = uiState,
         currentModeText = currentModeText,
+        notificationsGranted = notificationsGranted,
+        onNotificationSettingsClick = {
+            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+        },
         onReminderToggle = { isEnabled ->
-            viewModel.updateReminderEnabled(isEnabled)
+            if (isEnabled && !hasNotificationPermission(context)) {
+                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                viewModel.updateReminderEnabled(isEnabled)
+            }
         },
         onCompatWearableToggle = { isEnabled ->
             viewModel.updateCompatWearableSync(isEnabled)

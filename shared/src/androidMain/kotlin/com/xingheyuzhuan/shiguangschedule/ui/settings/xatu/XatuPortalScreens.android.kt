@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -24,6 +26,12 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import org.koin.compose.koinInject
 import shiguangschedule.shared.generated.resources.*
+import top.yukonga.miuix.kmp.basic.BasicComponent as MiuixRow
+import top.yukonga.miuix.kmp.basic.Card as MiuixCard
+import top.yukonga.miuix.kmp.basic.CardDefaults as MiuixCardDefaults
+import top.yukonga.miuix.kmp.basic.Icon as MiuixIcon
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal data class PortalServiceAction(val title: String, val summary: String, val icon: DrawableResource, val destination: Destination)
 
@@ -39,7 +47,7 @@ internal val academicServices = listOf(
     PortalServiceAction("学业进度", "已修学分与培养方案", Res.drawable.done_all_24px, Destination.XatuService("plan")),
     PortalServiceAction("教学周", "官方周次与课表日期参考", Res.drawable.view_week_24px, Destination.XatuService("week")),
     PortalServiceAction("校历", "学期日期、原图与识别文字", Res.drawable.calendar_today_24px, Destination.XatuService("calendar")),
-    webService("教务系统网页", "教务系统首页", Res.drawable.school_24px, "http://jwgl2018.xatu.edu.cn/"),
+    webService("教务系统", "教务系统首页", Res.drawable.school_24px, "http://jwgl2018.xatu.edu.cn/"),
 )
 internal val campusServices = listOf(
     PortalServiceAction("宿舍电费", "剩余电量、查询记录与趋势", Res.drawable.bolt_24px, Destination.XatuService("electricity")),
@@ -310,6 +318,16 @@ private fun ServiceDirectory(title: String, groups: List<Pair<String, List<Porta
                             },
                         )
                     }
+                } else if (LocalUiStyle.current == com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX) {
+                    val focus = LocalFocusManager.current
+                    var focused by remember { mutableStateOf(false) }
+                    top.yukonga.miuix.kmp.basic.InputField(
+                        query = query, onQueryChange = { query = it },
+                        onSearch = { focused = false; focus.clearFocus() },
+                        expanded = focused, onExpandedChange = { focused = it },
+                        label = "搜索$title",
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索$title" },
+                    )
                 } else {
                     UiInputField(query, { query = it }, Modifier.fillMaxWidth(), label = "搜索$title", singleLine = true)
                 }
@@ -337,41 +355,35 @@ private fun ServiceDirectory(title: String, groups: List<Pair<String, List<Porta
                         }
                         com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.MIUIX -> {
                             if (name.isNotEmpty()) SectionHeading(name)
-                            top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) {
-                                entries.forEach { entry ->
-                                    val summary = if (entry.destination is Destination.WebView) "网页" else entry.summary.takeIf { it.isNotBlank() }
-                                    top.yukonga.miuix.kmp.basic.BasicComponent(
-                                        title = entry.title,
-                                        summary = summary,
-                                        startAction = { top.yukonga.miuix.kmp.basic.Icon(vectorResource(entry.icon), contentDescription = null) },
-                                        endActions = { top.yukonga.miuix.kmp.basic.Icon(vectorResource(Res.drawable.chevron_right_24px), contentDescription = null) },
-                                        insideMargin = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                                        onClick = { onNavigate(entry.destination) },
-                                    )
-                                }
-                            }
+                            MiuixDirectoryGroup(entries, featured = query.isBlank() && name == groups.first().first, onNavigate = onNavigate)
                         }
                         com.xingheyuzhuan.shiguangschedule.data.model.UiStyle.COUI -> com.itos.coui.layout.Group(title = name.takeIf { it.isNotEmpty() }) {
                             entries.forEachIndexed { index, entry ->
-                                val summary = if (entry.destination is Destination.WebView) "网页" else entry.summary
+                                val web = entry.destination is Destination.WebView
                                 com.itos.coui.layout.Item(
                                     icon = {
                                         Icon(
                                             vectorResource(entry.icon),
                                             contentDescription = null,
-                                            tint = com.itos.coui.theme.CouiTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (web) com.itos.coui.theme.CouiTheme.colorScheme.onSurfaceVariant
+                                                else com.itos.coui.theme.CouiTheme.colorScheme.accentOnSurface,
                                         )
                                     },
                                     title = { com.itos.coui.text.Text(text = entry.title, kind = com.itos.coui.text.CouiTextKind.PreferenceTitle,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Start) },
-                                    summary = if (summary.isNotBlank()) ({
+                                    summary = if (!web && entry.summary.isNotBlank()) ({
                                         com.itos.coui.text.Text(
-                                            text = summary,
+                                            text = entry.summary,
                                             kind = com.itos.coui.text.CouiTextKind.PreferenceSummary,
                                             color = com.itos.coui.layout.CouiPageDefaults.themeColors().summary,
                                         )
                                     }) else null,
                                     trailing = {
+                                        if (web) com.itos.coui.text.Text(
+                                            text = "网页", kind = com.itos.coui.text.CouiTextKind.PreferenceValue,
+                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                            color = com.itos.coui.layout.CouiPageDefaults.themeColors().summary,
+                                        )
                                         Icon(
                                             com.itos.coui.icons.CouiIcons.Next,
                                             contentDescription = null,
@@ -390,6 +402,55 @@ private fun ServiceDirectory(title: String, groups: List<Pair<String, List<Porta
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiuixDirectoryGroup(entries: List<PortalServiceAction>, featured: Boolean, onNavigate: (Destination) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val colors = MiuixTheme.colorScheme
+        val showPair = featured && entries.size >= 2 && maxWidth / LocalDensity.current.fontScale >= 300.dp
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (showPair) Row(
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                entries.take(2).forEachIndexed { index, entry ->
+                    val foreground = if (index == 0) colors.onPrimaryContainer else colors.onSurfaceContainer
+                    MiuixCard(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        insideMargin = PaddingValues(16.dp),
+                        colors = MiuixCardDefaults.defaultColors(
+                            color = if (index == 0) colors.primaryContainer else colors.surfaceContainer,
+                            contentColor = foreground,
+                        ),
+                        showIndication = true, onClick = { onNavigate(entry.destination) },
+                    ) {
+                        MiuixIcon(vectorResource(entry.icon), null, Modifier.size(26.dp), tint = colors.primary)
+                        Spacer(Modifier.height(10.dp))
+                        MiuixText(entry.title, style = MiuixTheme.textStyles.title3, color = foreground)
+                        MiuixText(if (entry.destination is Destination.WebView) "网页" else entry.summary,
+                            style = MiuixTheme.textStyles.body2, color = foreground)
+                    }
+                }
+            }
+            val rows = if (showPair) entries.drop(2) else entries
+            if (rows.isNotEmpty()) MiuixCard(Modifier.fillMaxWidth()) {
+                rows.forEach { entry ->
+                    val web = entry.destination is Destination.WebView
+                    MiuixRow(
+                        title = entry.title, summary = entry.summary.takeUnless { web },
+                        startAction = { MiuixIcon(vectorResource(entry.icon), null, tint = colors.onSurfaceSecondary) },
+                        endActions = {
+                            if (web) MiuixText("网页", modifier = Modifier.padding(horizontal = 8.dp),
+                                style = MiuixTheme.textStyles.body2, color = colors.onSurfaceVariantSummary)
+                            MiuixIcon(vectorResource(Res.drawable.chevron_right_24px), null, tint = colors.onSurfaceVariantSummary)
+                        },
+                        onClick = { onNavigate(entry.destination) },
+                    )
                 }
             }
         }

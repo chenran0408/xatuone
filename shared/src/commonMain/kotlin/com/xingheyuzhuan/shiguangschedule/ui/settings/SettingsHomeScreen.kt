@@ -1,6 +1,10 @@
 package com.xingheyuzhuan.shiguangschedule.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import org.jetbrains.compose.resources.vectorResource
 import shiguangschedule.shared.generated.resources.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,15 +81,28 @@ fun SettingsHomeScreen(onNavigate: (Destination) -> Unit) {
                     item {
                         MiuixSettingsGroup(section.title) {
                             section.entries.forEach { entry ->
-                                UiSettingRow(
-                                    title = entry.title,
-                                    summary = entry.summary,
-                                    leadingContent = { Icon(vectorResource(entry.icon), null) },
-                                    trailingContent = {
-                                        Icon(vectorResource(Res.drawable.chevron_right_24px), null, tint = uiStyleColors().secondaryText)
-                                    },
-                                    onClick = { onNavigate(entry.destination) },
-                                )
+                                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                    val inlineValue = entry.summary.isNotBlank() && maxWidth / LocalDensity.current.fontScale >= 320.dp
+                                    UiSettingRow(
+                                        title = entry.title,
+                                        summary = if (inlineValue) "" else entry.summary,
+                                        leadingContent = {
+                                            val accent = uiStyleColors().accent
+                                            Box(Modifier.size(32.dp).background(accent.copy(alpha = .10f), RoundedCornerShape(10.dp)),
+                                                contentAlignment = Alignment.Center) {
+                                                Icon(vectorResource(entry.icon), null, Modifier.size(20.dp), tint = accent)
+                                            }
+                                        },
+                                        trailingContent = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (inlineValue) UiText(entry.summary, modifier = Modifier.padding(end = 4.dp),
+                                                    style = MaterialTheme.typography.bodySmall, color = uiStyleColors().secondaryText)
+                                                Icon(vectorResource(Res.drawable.chevron_right_24px), null, Modifier.size(20.dp), tint = uiStyleColors().secondaryText)
+                                            }
+                                        },
+                                        onClick = { onNavigate(entry.destination) },
+                                    )
+                                }
                             }
                         }
                     }
