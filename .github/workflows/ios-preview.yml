@@ -68,6 +68,13 @@ jobs:
           if test -d "$RUNNER_TEMP/XatuOneTests.xcresult"; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/XatuOneTests.xcresult"
           fi
+      - name: Save simulator diagnostics on failure
+        if: failure() && steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: iPhone-simulator-diagnostics
+          path: ${{ runner.temp }}/XatuOneTests.xcresult
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         with:
           name: XATU-One-iPhone-unsigned

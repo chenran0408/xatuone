@@ -84,6 +84,8 @@ final class ParityNavigationTests: XCTestCase {
             self.tap(app.navigationBars["课程表"].buttons["课表设置"])
             self.tap(app.buttons["课表管理"])
             if tableMenu.waitForExistence(timeout: 3) {
+                let available = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: tableMenu)
+                XCTAssertEqual(XCTWaiter.wait(for: [available], timeout: 8), .completed)
                 tableMenu.tap()
                 self.tap(app.buttons["删除课表"])
                 let prompt = app.staticTexts["删除「\(table)」及其中的课程？"]

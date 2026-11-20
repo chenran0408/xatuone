@@ -60,6 +60,7 @@ private struct TimetableManager: View {
     let owner: String
     @State private var deleting: String?
     @State private var renaming: String?
+    @State private var actions: String?
     @State private var error: String?
     var body: some View {
         List {
@@ -72,17 +73,22 @@ private struct TimetableManager: View {
                                 Text(table.title).multilineTextAlignment(.leading)
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.borderless)
-                        Menu {
-                            Button("重命名") { renaming = key }
-                            Button("删除课表", role: .destructive) { deleting = key }
-                        } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
-                            .accessibilityLabel("\(table.title)的操作")
+                        Button { actions = key } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }.buttonStyle(.borderless).accessibilityLabel("\(table.title)的操作")
                     }
                 }
             }
             NavigationLink("新建课表") { TableNameForm(model: model, owner: owner) }
             if let error = error ?? model.problem { Text(error).foregroundStyle(.red) }
         }.navigationTitle("课表管理")
+         .confirmationDialog("课表操作", isPresented: Binding(get: { actions != nil }, set: { if !$0 { actions = nil } }),
+                             titleVisibility: .visible, presenting: actions) { key in
+             Button("重命名") { renaming = key }
+             Button("删除课表", role: .destructive) { deleting = key }
+             Button("取消", role: .cancel) {}
+         }
          .navigationDestination(isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
              if let key = renaming, let table = model.archive.semesters[key] {
                  TableNameForm(model: model, owner: owner, key: key, name: table.title)
