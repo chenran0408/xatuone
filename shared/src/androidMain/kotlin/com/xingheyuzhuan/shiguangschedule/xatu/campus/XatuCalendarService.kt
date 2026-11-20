@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.AtomicFile
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCalendar
+import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,9 +20,20 @@ import org.koin.core.annotation.Single
 @Single
 class XatuCalendarService(
     private val client: OkHttpClient,
-    private val context: Context
+    private val context: Context,
+    private val campus: XatuCampusRepository
 ) {
-    suspend fun latest(): XatuCalendar = withContext(Dispatchers.IO) {
+    private val imageLock = Mutex()
+
+    suspend fun refresh() = withContext(Dispatchers.IO) {
+        imageLock.withLock {
+            val latest = fetchLatest()
+            campus.saveCalendar(latest)
+            pruneCalendarImages(context.filesDir, context.cacheDir, File(latest.imagePath))
+        }
+    }
+
+    private suspend fun fetchLatest(): XatuCalendar {
         val page = XatuCalendarParser.latest(get(XatuCalendarParser.INDEX, XatuCalendarParser.INDEX))
         val html = get(page, page)
         val document = Jsoup.parse(html, page)
@@ -34,8 +48,8 @@ class XatuCalendarService(
         val rawText = try { XatuCalendarOcr.read(bitmap) } finally { bitmap.recycle() }
         val spans = XatuCalendarParser.semesters(document.text()).ifEmpty { XatuCalendarParser.semesters(rawText) }
         val imageFile = File(context.filesDir, "xatu-calendar-${digest(imageBytes)}.image")
-        saveImage(imageFile, imageBytes)
-        XatuCalendar(
+        if (!imageFile.isFile) saveImage(imageFile, imageBytes)
+        return XatuCalendar(
             title = document.title().substringBefore("-西安工业"),
             pageUrl = page,
             imageUrl = imageUrl,
@@ -47,9 +61,13 @@ class XatuCalendarService(
     }
 
     suspend fun originalImage(calendar: XatuCalendar): String = withContext(Dispatchers.IO) {
+        imageLock.withLock { resolveOriginal(calendar) }
+    }
+
+    private fun resolveOriginal(calendar: XatuCalendar): String {
         if (calendar.imagePath.isNotBlank()) {
             val saved = File(calendar.imagePath)
-            if (saved.isFile) return@withContext saved.absolutePath
+            if (saved.isFile) return saved.absolutePath
         }
 
         check(calendar.imageUrl.isNotBlank()) { "校历未提供原图地址" }
@@ -60,7 +78,7 @@ class XatuCalendarService(
             imageBounds(imageBytes)
             saveImage(recovered, imageBytes)
         }
-        recovered.absolutePath
+        return recovered.absolutePath
     }
 
     private fun imageBounds(imageBytes: ByteArray): BitmapFactory.Options {
@@ -116,4 +134,13 @@ class XatuCalendarService(
     private companion object {
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36"
     }
+}
+
+internal fun pruneCalendarImages(filesDir: File, cacheDir: File, current: File) {
+    val original = Regex("xatu-calendar-[0-9a-f]{64}\\.image")
+    val recovered = Regex("xatu-calendar-original-[0-9a-f]{64}\\.image")
+    filesDir.listFiles { file -> file != current && file.isFile && original.matches(file.name) }
+        ?.forEach { it.delete() }
+    cacheDir.listFiles { file -> file.isFile && recovered.matches(file.name) }
+        ?.forEach { it.delete() }
 }

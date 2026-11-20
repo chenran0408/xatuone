@@ -1,6 +1,8 @@
 package com.xingheyuzhuan.shiguangschedule
 
 import androidx.navigation3.runtime.NavKey
+import com.xingheyuzhuan.shiguangschedule.ui.settings.xatu.campusServiceGroups
+import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusLinks
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,6 +10,35 @@ import kotlinx.serialization.PolymorphicSerializer
 import kotlinx.serialization.json.Json
 
 class NavigationStateTest {
+    @Test
+    fun selfServiceUpgradesTheCallbackAndPackagePagesWithoutChangingTheirEncodedTargets() {
+        val target = "http://self.xatu.edu.cn/Self/sso_login"
+        val query = "?lang=zh&return=a%2Fb%2Bz#ok"
+        for (path in listOf("/Self/sso_login", "/Self/service/packageDisclaimer", "/Self/sso/packageChange")) {
+            assertEquals(
+                "https://self.xatu.edu.cn$path$query",
+                XatuCampusLinks.secureNetworkNavigation("HTTP://SELF.XATU.EDU.CN:80$path$query", "GET", true),
+            )
+        }
+        assertEquals(null, XatuCampusLinks.secureNetworkNavigation(target, "POST", true))
+        assertEquals(null, XatuCampusLinks.secureNetworkNavigation(target, "GET", false))
+        listOf(
+            target.replace("http:", "https:"), target.replace(".cn/", ".cn:8080/"),
+            target.replace(".cn/", ".cn.example/"), target.replace(".cn/", ".cn@another.example/"),
+            target.replace("/Self/", "/self/"), target.replace("/Self/", "/Selfish/"),
+        ).forEach { assertEquals(null, XatuCampusLinks.secureNetworkNavigation(it, "GET", true)) }
+    }
+
+    @Test
+    fun campusNetworkPackageInDirectoryOpensTheSchoolSsoServiceInApp() {
+        val (_, services) = campusServiceGroups.single { it.first == "学习资源与网络" }
+        val service = services.single { it.title == "校园网套餐" }
+        assertEquals(
+            Destination.WebView(initialUrl = "https://self.xatu.edu.cn/Self/sso/packageChange", serviceTitle = service.title),
+            service.destination,
+        )
+    }
+
     @Test
     fun primaryTabSwitchKeepsOtherPrimaryEntries() {
         val stack = mutableListOf<NavKey>(Destination.CourseSchedule)

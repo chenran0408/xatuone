@@ -108,7 +108,7 @@ actual fun XatuServicePage(
         calendarRefreshing = true
         status = "正在刷新校历…"
         try {
-            campus.saveCalendar(calendarService.latest())
+            calendarService.refresh()
             status = "校历已更新"
         } catch (error: CancellationException) {
             throw error

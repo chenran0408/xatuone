@@ -19,6 +19,7 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.XatuAccountRepository
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuSessionRepository
 import com.xingheyuzhuan.shiguangschedule.ui.components.*
 import com.xingheyuzhuan.shiguangschedule.xatu.academic.XATU_CAS_LOGIN_URL
+import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusLinks
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.DrawableResource
@@ -60,8 +61,6 @@ internal val campusSettings = listOf(
 )
 private val webServices = listOf(
     webService("请销假", "申请与记录", Res.drawable.sticky_note_2_24px, "https://ehall.xatu.edu.cn/xsfw/sys/swmxsqjapp/*default/index.do?wxType=1"),
-    webService("图书馆", "馆藏与借阅", Res.drawable.school_24px, "https://lib.xatu.edu.cn/"),
-    webService("校园网", "充值与套餐", Res.drawable.cloud_24px, "https://self.xatu.edu.cn/"),
     webService("电费充值", "缴费平台", Res.drawable.bolt_24px, XATU_PAY_LOGIN),
     webService("一网通办", "综合办事", Res.drawable.home_24px, "https://ywtb.xatu.edu.cn/"),
 )
@@ -244,14 +243,19 @@ actual fun XatuAcademicScreen(onNavigate: (Destination) -> Unit) {
     ServiceDirectory("教务", listOf("" to academicServices), onNavigate)
 }
 
+internal val campusServiceGroups = listOf(
+    "宿舍与缴费" to (campusServices.filter { (it.destination as? Destination.XatuService)?.page == "electricity" } + webServices.filter { it.title == "电费充值" }),
+    "日常办理" to (campusServices.filter { it.title == "校园签到" } + webServices.filter { it.title == "请销假" }),
+    "学习资源与网络" to listOf(
+        webService("图书馆", "馆藏与借阅", Res.drawable.school_24px, "https://lib.xatu.edu.cn/"),
+        XatuCampusLinks.find("netfee").let { webService(it.title, "网络自助服务", Res.drawable.cloud_24px, it.url) },
+    ),
+    "综合办事" to (campusServices.filter { it.title == "一站式大厅" } + webServices.filter { it.title == "一网通办" })
+)
+
 @Composable
 actual fun XatuServicesScreen(onNavigate: (Destination) -> Unit, onBack: () -> Unit) {
-    ServiceDirectory("校园服务", listOf(
-        "宿舍与缴费" to (campusServices.filter { (it.destination as? Destination.XatuService)?.page == "electricity" } + webServices.filter { it.title == "电费充值" }),
-        "日常办理" to (campusServices.filter { it.title == "校园签到" } + webServices.filter { it.title == "请销假" }),
-        "学习资源与网络" to webServices.filter { it.title in listOf("图书馆", "校园网") },
-        "综合办事" to (campusServices.filter { it.title == "一站式大厅" } + webServices.filter { it.title == "一网通办" })
-    ), onNavigate)
+    ServiceDirectory("校园服务", campusServiceGroups, onNavigate)
 }
 
 @Composable

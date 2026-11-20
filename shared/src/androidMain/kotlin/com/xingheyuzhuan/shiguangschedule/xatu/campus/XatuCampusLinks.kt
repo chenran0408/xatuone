@@ -1,9 +1,17 @@
 package com.xingheyuzhuan.shiguangschedule.xatu.campus
 
 object XatuCampusLinks {
+    private val networkSelfService = Regex("""(?i:http://self\.xatu\.edu\.cn)(?::80)?(/Self/.*)""")
+
+    internal fun secureNetworkNavigation(url: String, method: String, mainFrame: Boolean): String? {
+        if (!mainFrame || method != "GET") return null
+        val match = networkSelfService.matchEntire(url) ?: return null
+        return "https://self.xatu.edu.cn" + match.groupValues[1]
+    }
+
     val pages = listOf(
         XatuCampusLink("charge", "电费充值", "https://jfpay.xatu.edu.cn/casLogin/"),
-        XatuCampusLink("netfee", "校园网充值", "https://self.xatu.edu.cn/Self/sso/packageChange"),
+        XatuCampusLink("netfee", "校园网套餐", "https://self.xatu.edu.cn/Self/sso/packageChange"),
         XatuCampusLink("checkin", "签到", "https://ehall.xatu.edu.cn/xsfw/sys/swmqdzsapp/*default/index.do#/jrqd"),
         XatuCampusLink("leave", "请销假", "https://ehall.xatu.edu.cn/xsfw/sys/swmxsqjapp/*default/index.do?wxType=1"),
         XatuCampusLink("library", "图书馆", "https://lib.xatu.edu.cn/"),

@@ -6,9 +6,6 @@
 -keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod,AnnotationDefault,*Annotation*
 
 # 依赖注入 (Koin) ---
-# 保留 Koin 核心类及 DSL 相关
--keep class org.koin.** { *; }
-
 # 保留 Koin Annotations 及其生成的模块 (KSP 路径)
 -keep class org.koin.ksp.generated.** { *; }
 -keep @org.koin.core.annotation.Module class * { *; }

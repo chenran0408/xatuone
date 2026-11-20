@@ -1,6 +1,7 @@
 package com.xingheyuzhuan.shiguangschedule.ui.schoolselection.web
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.xingheyuzhuan.shiguangschedule.data.repository.XatuCampusRepository
+import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCampusLinks
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuLocation
 import com.xingheyuzhuan.shiguangschedule.xatu.campus.XatuCoordinate
 import org.koin.compose.koinInject
@@ -142,6 +144,20 @@ class AndroidWebViewController : WebViewController {
 
     override fun setDevToolsEnabled(enabled: Boolean) {
         WebView.setWebContentsDebuggingEnabled(enabled)
+    }
+
+    fun clearResourceCache(context: Context) {
+        val current = webViewInstance
+        if (current != null) {
+            current.clearCache(true)
+        } else {
+            val view = WebView(context)
+            try {
+                view.clearCache(true)
+            } finally {
+                view.destroy()
+            }
+        }
     }
 
     override suspend fun clearSession() {
@@ -412,6 +428,14 @@ actual fun PlatformWebView(
 
                     val baseViewClient = object : WebViewClient() {
                         private var clearEntryHistory = resetHistoryOnEntry
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val secureUrl = XatuCampusLinks.secureNetworkNavigation(
+                                request.url.toString(), request.method, request.isForMainFrame
+                            ) ?: return false
+                            view.loadUrl(secureUrl)
+                            return true
+                        }
+
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             androidController.pageStarted(url.orEmpty())
                             if (!supportsEarlyLocation && snapshot.checkinLocation.enabled && androidController.isCheckinPage()) {

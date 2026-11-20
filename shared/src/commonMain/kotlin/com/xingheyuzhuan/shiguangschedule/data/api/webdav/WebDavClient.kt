@@ -1,6 +1,7 @@
 package com.xingheyuzhuan.shiguangschedule.data.api.webdav
 
 import io.ktor.client.*
+import io.ktor.client.call.body
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BasicAuthCredentials
@@ -8,10 +9,7 @@ import io.ktor.client.plugins.auth.providers.basic
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.utils.io.readAvailable
-import okio.FileSystem
-import okio.Path
-import okio.SYSTEM
+import kotlinx.coroutines.CancellationException
 
 /**
  * WebDAV 协议通信客户端
@@ -19,7 +17,7 @@ import okio.SYSTEM
  */
 class WebDavClient(
     private val config: WebDavConfig
-) {
+) : AutoCloseable {
 
     private val client by lazy {
         HttpClient {
@@ -73,17 +71,17 @@ class WebDavClient(
                 if (!isSuccess) return false
             }
             return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return false
         }
     }
 
     /**
-     * 上传本地文件 (PUT)
+     * 将备份模块直接上传到其远端路径。
      */
-    suspend fun uploadFile(localPath: Path, remoteFileName: String): Boolean {
-        if (!FileSystem.SYSTEM.exists(localPath)) return false
-
+    suspend fun upload(remoteFileName: String, bytes: ByteArray): Boolean {
         val rootPrefix = config.getCleanRootPath()
         val fileRelativeDir = remoteFileName.substringBeforeLast('/', "")
 
@@ -95,44 +93,16 @@ class WebDavClient(
 
         if (!ensureRemoteDirChainExists(fullRelativeDirChain)) return false
 
-        return try {
-            val bytes = FileSystem.SYSTEM.read(localPath) { readByteArray() }
-            val fullUrl = buildFullUrl(remoteFileName)
-            val response = client.put(fullUrl) {
-                setBody(bytes)
-            }
-            response.status.isSuccess()
-        } catch (e: Exception) {
-            false
-        }
+        return client.put(buildFullUrl(remoteFileName)) { setBody(bytes) }.status.isSuccess()
     }
 
     /**
-     * 下载远端文件 (GET)
+     * 读取一个远端备份模块。
      */
-    suspend fun downloadFile(remoteFileName: String, targetLocalPath: Path): Boolean {
-        return try {
-            val fullUrl = buildFullUrl(remoteFileName)
-            val response = client.get(fullUrl)
-
-            if (response.status.isSuccess()) {
-                val byteChannel = response.bodyAsChannel()
-                val buffer = ByteArray(8192)
-                FileSystem.SYSTEM.write(targetLocalPath) {
-                    while (!byteChannel.isClosedForRead) {
-                        val read = byteChannel.readAvailable(buffer)
-                        if (read <= 0) break
-                        write(buffer, 0, read)
-                    }
-                }
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+    suspend fun download(remoteFileName: String): ByteArray? {
+        val response = client.get(buildFullUrl(remoteFileName))
+        return if (response.status.isSuccess()) response.body<ByteArray>() else null
     }
 
-    fun close() = client.close()
+    override fun close() = client.close()
 }

@@ -238,6 +238,20 @@ jobs:
             exit 1
           fi
 
+          while IFS= read -r apk; do
+            archive="${apk%.apk}.zip"
+            python3 - "$apk" "$archive" <<'PY'
+          from pathlib import Path
+          import sys
+          from zipfile import ZipFile, ZIP_DEFLATED
+
+          apk, archive = map(Path, sys.argv[1:])
+          with ZipFile(archive, "w", ZIP_DEFLATED, compresslevel=9) as output:
+              output.write(apk, apk.name)
+          PY
+            FILE_LIST+=$'\n'"$archive"
+          done < <(find artifacts -type f -name '*-arm64-v8a-release.apk')
+
           echo "===== 待发布文件列表 ====="
           echo "$FILE_LIST"
 

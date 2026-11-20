@@ -11,6 +11,7 @@ import com.xingheyuzhuan.shiguangschedule.data.repository.BackupRepository
 import com.xingheyuzhuan.shiguangschedule.tool.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,12 +22,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okio.BufferedSink
 import okio.BufferedSource
-import okio.FileSystem
+import okio.IOException
+import okio.Path
 import okio.Path.Companion.toPath
-import okio.SYSTEM
-import okio.buffer
-import okio.openZip
-import okio.use
+import org.koin.core.annotation.Named
 import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.KoinViewModel
 import shiguangschedule.shared.generated.resources.Res
@@ -37,7 +36,6 @@ import shiguangschedule.shared.generated.resources.backup_err_local_export_faile
 import shiguangschedule.shared.generated.resources.backup_err_restore_failed_prefix
 import shiguangschedule.shared.generated.resources.backup_err_upload_failed
 import shiguangschedule.shared.generated.resources.error_webdav_unconfigured
-import kotlin.random.Random
 
 /**
  * 备份与恢复界面的 UI 状态定义
@@ -77,7 +75,8 @@ sealed interface TestResult {
 @KoinViewModel
 class BackupViewModel(
     private val apiConfigRepository: ApiConfigRepository,
-    private val backupRepository: BackupRepository
+    private val backupRepository: BackupRepository,
+    @Named("CacheDir") private val cacheDir: Path,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupUiState())
@@ -87,6 +86,13 @@ class BackupViewModel(
     private val FIXED_BACKUP_DIR = "Backup"
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                BackupScratchFiles.clean(cacheDir)
+            } catch (error: IOException) {
+                _uiState.update { it.copy(testResult = TestResult.Error(error.message.orEmpty())) }
+            }
+        }
         // 监听并同步本地存储的 WebDAV 配置变化
         viewModelScope.launch {
             apiConfigRepository.webDavConfigFlow.collectLatest { config ->
@@ -122,8 +128,7 @@ class BackupViewModel(
             val testConfig = WebDavConfig(baseUrl.trim(), username.trim(), finalPassword, processedRootPath)
             val testClient = apiConfigRepository.createWebDavClient(testConfig)
 
-            val isConnected = testClient?.ensureRootDirectoryExists() ?: false
-            testClient?.close()
+            val isConnected = testClient?.use { it.ensureRootDirectoryExists() } ?: false
 
             if (isConnected) {
                 apiConfigRepository.saveWebDavConfig(testConfig)
@@ -151,55 +156,26 @@ class BackupViewModel(
      * 将全量应用数据打包并上传备份至 WebDAV 服务器
      */
     fun backupToWebDav() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isBusy = true, testResult = TestResult.Idle) }
-
-            val client = apiConfigRepository.createWebDavClient() ?: run {
-                val errMsg = getString(Res.string.error_webdav_unconfigured)
-                _uiState.update { it.copy(isBusy = false, testResult = TestResult.Error(errMsg)) }
-                return@launch
-            }
-
-            val backupPackage = backupRepository.createFullSoftwareBackup(BackupModule.entries)
-            if (backupPackage == null) {
-                client.close()
-                val errMsg = getString(Res.string.backup_err_empty)
-                _uiState.update { it.copy(isBusy = false, testResult = TestResult.Error(errMsg)) }
-                return@launch
-            }
-
-            val success = withContext(Dispatchers.IO) {
-                try {
-                    val tempDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
-
-                    // 1. 生成并上传元数据 meta.json
-                    val metaPath = tempDir / "meta.json"
-                    FileSystem.SYSTEM.write(metaPath) {
-                        writeUtf8(Json.encodeToString(BackupMeta.serializer(), backupPackage.meta))
-                    }
-                    if (!client.uploadFile(metaPath, "$FIXED_BACKUP_DIR/meta.json")) return@withContext false
-
-                    // 2. 逐模块生成并上传 cbor 数据文件
-                    for ((key, bytes) in backupPackage.payloadMap) {
-                        val modulePath = tempDir / "$key.cbor"
-                        FileSystem.SYSTEM.write(modulePath) {
-                            write(bytes)
-                        }
-                        if (!client.uploadFile(modulePath, "$FIXED_BACKUP_DIR/$key.cbor")) return@withContext false
-                    }
-                    true
-                } catch (_: Exception) {
-                    false
-                }
-            }
-
-            client.close()
-            val resultErrorMsg = getString(Res.string.backup_err_upload_failed)
-            _uiState.update {
-                it.copy(
-                    isBusy = false,
-                    testResult = if (success) TestResult.Success else TestResult.Error(resultErrorMsg)
-                )
+            try {
+                val client = apiConfigRepository.createWebDavClient()
+                val result = client?.use {
+                    val backup = backupRepository.createFullSoftwareBackup(BackupModule.entries)
+                        ?: return@use TestResult.Error(getString(Res.string.backup_err_empty))
+                    val meta = Json.encodeToString(BackupMeta.serializer(), backup.meta).encodeToByteArray()
+                    val success = client.upload("$FIXED_BACKUP_DIR/meta.json", meta) &&
+                        backup.payloadMap.all { (key, bytes) -> client.upload("$FIXED_BACKUP_DIR/$key.cbor", bytes) }
+                    if (success) TestResult.Success else TestResult.Error(getString(Res.string.backup_err_upload_failed))
+                } ?: TestResult.Error(getString(Res.string.error_webdav_unconfigured))
+                _uiState.update { it.copy(testResult = result) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val message = error.message ?: getString(Res.string.backup_err_upload_failed)
+                _uiState.update { it.copy(testResult = TestResult.Error(message)) }
+            } finally {
+                _uiState.update { it.copy(isBusy = false) }
             }
         }
     }
@@ -208,61 +184,32 @@ class BackupViewModel(
      * 从 WebDAV 服务器拉取备份数据并恢复应用数据
      */
     fun restoreFromWebDav() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isBusy = true, testResult = TestResult.Idle) }
-
-            val client = apiConfigRepository.createWebDavClient() ?: run {
-                val errMsg = getString(Res.string.error_webdav_unconfigured)
-                _uiState.update { it.copy(isBusy = false, testResult = TestResult.Error(errMsg)) }
-                return@launch
-            }
-
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val tempDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
-                    val metaPath = tempDir / "meta_restore.json"
-
-                    val corruptedMsg = getString(Res.string.backup_err_corrupted)
-                    if (!client.downloadFile("$FIXED_BACKUP_DIR/meta.json", metaPath)) {
-                        return@withContext Result.failure(Exception(corruptedMsg))
-                    }
-
-                    // 读取并解析元数据
-                    val metaText = FileSystem.SYSTEM.read(metaPath) { readUtf8() }
-                    val meta = Json.decodeFromString(BackupMeta.serializer(), metaText)
-
-                    // 批量下载并校验各模块数据文件
-                    val payloadMap = mutableMapOf<String, ByteArray>()
-                    for (module in meta.modules) {
-                        val modulePath = tempDir / "${module.key}_restore.cbor"
-                        if (client.downloadFile("$FIXED_BACKUP_DIR/${module.key}.cbor", modulePath)) {
-                            val bytes = FileSystem.SYSTEM.read(modulePath) { readByteArray() }
-                            payloadMap[module.key] = bytes
+            try {
+                val client = apiConfigRepository.createWebDavClient()
+                val result = client?.use {
+                    val corrupted = getString(Res.string.backup_err_corrupted)
+                    val bytes = client.download("$FIXED_BACKUP_DIR/meta.json") ?: error(corrupted)
+                    val meta = Json.decodeFromString(BackupMeta.serializer(), bytes.decodeToString())
+                    val payloads = buildMap {
+                        for (module in meta.modules) {
+                            client.download("$FIXED_BACKUP_DIR/${module.key}.cbor")?.let { put(module.key, it) }
                         }
                     }
-
-                    if (payloadMap.isEmpty()) {
-                        return@withContext Result.failure(Exception(corruptedMsg))
-                    }
-
-                    val availableModules = meta.modules.filter { payloadMap.containsKey(it.key) }
-                    val safeMeta = meta.copy(modules = availableModules)
-
-                    val packageObj = AppBackupPackage(safeMeta, payloadMap)
-                    backupRepository.restoreFullSoftwareBackup(packageObj)
-                } catch (e: Exception) {
-                    Result.failure(e)
-                }
-            }
-
-            client.close()
-            val exception = result.exceptionOrNull()
-            val failPrefix = getString(Res.string.backup_err_restore_failed_prefix, exception?.message ?: "")
-            _uiState.update {
-                it.copy(
-                    isBusy = false,
-                    testResult = if (result.isSuccess) TestResult.Success else TestResult.Error(failPrefix)
-                )
+                    check(payloads.isNotEmpty()) { corrupted }
+                    val available = meta.modules.filter { it.key in payloads }
+                    backupRepository.restoreFullSoftwareBackup(AppBackupPackage(meta.copy(modules = available), payloads)).getOrThrow()
+                    TestResult.Success
+                } ?: TestResult.Error(getString(Res.string.error_webdav_unconfigured))
+                _uiState.update { it.copy(testResult = result) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val message = getString(Res.string.backup_err_restore_failed_prefix, error.message.orEmpty())
+                _uiState.update { it.copy(testResult = TestResult.Error(message)) }
+            } finally {
+                _uiState.update { it.copy(isBusy = false) }
             }
         }
     }
@@ -322,39 +269,20 @@ class BackupViewModel(
         _uiState.update { it.copy(isBusy = true, testResult = TestResult.Idle) }
 
         try {
-            val tempDir = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
-            val randomSuffix = Random.nextLong(100000, 999999)
-            val tempZipPath = tempDir / "backup_import_$randomSuffix.zip"
-
-            // 将输入流转存为本地临时压缩包文件以便读取 ZipFS
-            FileSystem.SYSTEM.sink(tempZipPath).buffer().use { sink ->
-                sink.writeAll(source)
-            }
-
-            var meta: BackupMeta? = null
-            val payloadMap = mutableMapOf<String, ByteArray>()
-
-            // 使用 Okio ZipFileSystem 读取解压
-            val zipFs = FileSystem.SYSTEM.openZip(tempZipPath)
-            val filesInZip = zipFs.list("/".toPath())
-
-            for (filePath in filesInZip) {
-                val fileName = filePath.name
-                when {
-                    fileName == "meta.json" -> {
-                        val content = zipFs.read(filePath) { readUtf8() }
-                        meta = Json.decodeFromString(BackupMeta.serializer(), content)
-                    }
-                    fileName.endsWith(".cbor") -> {
-                        val key = fileName.removeSuffix(".cbor")
-                        val bytes = zipFs.read(filePath) { readByteArray() }
-                        payloadMap[key] = bytes
+            val (meta, payloadMap) = BackupScratchFiles.readArchive(cacheDir, source) { zip ->
+                var manifest: BackupMeta? = null
+                val modules = mutableMapOf<String, ByteArray>()
+                for (path in zip.list("/".toPath())) {
+                    when {
+                        path.name == "meta.json" -> manifest = Json.decodeFromString(
+                            BackupMeta.serializer(), zip.read(path) { readUtf8() },
+                        )
+                        path.name.endsWith(".cbor") -> modules[path.name.removeSuffix(".cbor")] =
+                            zip.read(path) { readByteArray() }
                     }
                 }
+                manifest to modules
             }
-
-            // 清理临时文件
-            FileSystem.SYSTEM.delete(tempZipPath)
 
             val corruptedMsg = getString(Res.string.backup_err_corrupted)
             val finalMeta = meta ?: throw Exception(corruptedMsg)
@@ -369,18 +297,17 @@ class BackupViewModel(
             val packageObj = AppBackupPackage(safeMeta, payloadMap)
             backupRepository.restoreFullSoftwareBackup(packageObj).getOrThrow()
 
-            _uiState.update { it.copy(isBusy = false, testResult = TestResult.Success) }
+            _uiState.update { it.copy(testResult = TestResult.Success) }
             true
+        } catch (error: CancellationException) {
+            throw error
         } catch (e: Exception) {
             val errMsg = e.message ?: ""
             val failPrefix = getString(Res.string.backup_err_restore_failed_prefix, errMsg)
-            _uiState.update {
-                it.copy(
-                    isBusy = false,
-                    testResult = TestResult.Error(failPrefix)
-                )
-            }
+            _uiState.update { it.copy(testResult = TestResult.Error(failPrefix)) }
             false
+        } finally {
+            _uiState.update { it.copy(isBusy = false) }
         }
     }
 }
