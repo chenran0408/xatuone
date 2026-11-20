@@ -453,7 +453,7 @@ final class CampusSession: NSObject, ObservableObject, WKNavigationDelegate, WKU
     static func secureLoginRedirect(_ request: URLRequest) -> URL? {
         guard request.httpMethod == "GET", let url = request.url, url.scheme == "http",
               let host = url.host?.lowercased(), url.port == nil || url.port == 80,
-              host == "authserver.xatu.edu.cn" || (host == "self.xatu.edu.cn" && url.path == "/Self/sso_login"),
+              host == "authserver.xatu.edu.cn" || (host == "self.xatu.edu.cn" && url.path.hasPrefix("/Self/")),
               var parts = URLComponents(url:url,resolvingAgainstBaseURL:false) else { return nil }
         parts.scheme = "https"; parts.port = nil
         return parts.url

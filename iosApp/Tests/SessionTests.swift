@@ -98,7 +98,10 @@ final class SessionTests: XCTestCase {
                        "https://self.xatu.edu.cn/Self/sso_login?service=a%2Fb&lang=zh")
         callback.httpMethod = "POST"
         XCTAssertNil(CampusSession.secureLoginRedirect(callback))
-        for url in ["http://self.xatu.edu.cn/Self/other", "http://self.xatu.edu.cn:8080/Self/sso_login",
+        let notice = URLRequest(url:URL(string:"http://self.xatu.edu.cn/Self/service/packageDisclaimer")!)
+        XCTAssertEqual(CampusSession.secureLoginRedirect(notice)?.absoluteString,
+                       "https://self.xatu.edu.cn/Self/service/packageDisclaimer")
+        for url in ["http://self.xatu.edu.cn/other", "http://self.xatu.edu.cn:8080/Self/sso_login",
                     "http://other.example.org/Self/sso_login"] {
             XCTAssertNil(CampusSession.secureLoginRedirect(URLRequest(url:URL(string:url)!)))
         }
